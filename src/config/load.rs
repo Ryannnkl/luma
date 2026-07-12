@@ -151,4 +151,13 @@ mod tests {
 
         assert!(matches!(error, LoadError::Read { .. }));
     }
+
+    #[test]
+    fn example_configuration_stays_valid() {
+        parse(
+            include_str!("../../config.example.toml"),
+            PathBuf::from("config.example.toml"),
+        )
+        .expect("the documented example must remain valid");
+    }
 }
