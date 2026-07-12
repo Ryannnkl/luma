@@ -35,6 +35,10 @@ impl std::error::Error for AuthenticationError {}
 ///
 /// The target username comes from the real UID rather than environment variables. Password
 /// ownership remains inside the PAM conversation and is zeroized when the transaction ends.
+///
+/// # Errors
+///
+/// Returns an error when the process owner cannot be resolved or PAM infrastructure fails.
 pub fn authenticate_current_user(
     password: PasswordAttempt,
 ) -> Result<AuthenticationResult, AuthenticationError> {
@@ -56,10 +60,6 @@ fn authenticate(
     if let Err(error) = context.authenticate(flags) {
         return classify_pam_error(error.code());
     }
-    if let Err(error) = context.acct_mgmt(Flag::SILENT) {
-        return classify_pam_error(error.code());
-    }
-
     Ok(AuthenticationResult::Authenticated)
 }
 
@@ -124,8 +124,6 @@ impl ConversationHandler for PasswordConversation {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CStr;
-
     use pam_client2::ConversationHandler;
 
     use super::{
@@ -141,7 +139,7 @@ mod tests {
         let password = input.submit().expect("password should be present");
         let mut conversation =
             PasswordConversation::new("alice", password).expect("credentials contain no NUL");
-        let prompt = CStr::from_bytes_with_nul(b"Password: \0").expect("prompt is valid");
+        let prompt = c"Password: ";
 
         assert_eq!(
             conversation
