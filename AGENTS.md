@@ -1,0 +1,69 @@
+# Luma Contributor Guide
+
+## Project purpose
+
+Luma is a secure, customizable Wayland session locker written in Rust. Its first
+target is Sway and other compositors implementing `ext-session-lock-v1`.
+
+## Safety invariants
+
+- A normal fullscreen window is never considered a session lock.
+- Production builds must never include a password bypass, secret unlock key, or
+  crash-to-unlock behavior.
+- Unlock only after successful authentication through PAM.
+- Never log, persist, clone unnecessarily, or expose password contents.
+- Clear sensitive input from memory immediately after each authentication attempt.
+- Prepare fallbacks before requesting a session lock. A rendering failure must
+  result in an opaque surface with a usable authentication prompt.
+- Cover every active output before confirming the locked state, and handle outputs
+  added, removed, resized, scaled, or transformed while locked.
+- Keep demo mode separate from real locking. Demo mode must never authenticate a
+  real user or acquire `ext-session-lock-v1`.
+- Test real locking in a nested compositor or virtual machine before testing it in
+  the primary desktop session.
+- Keep swaylock installed and configured as a recovery option until Luma has been
+  exercised successfully in production-like tests.
+
+## Architecture
+
+Keep security-sensitive code small and independent from presentation code:
+
+- `wayland`: session-lock lifecycle, outputs, surfaces, and input dispatch.
+- `auth`: PAM integration and secret-memory handling.
+- `renderer`: opaque fallback, background, blur, clock, prompt, and animations.
+- `state`: explicit application state transitions.
+- `config`: validated user-facing configuration.
+- `diagnostics`: useful logs that never contain secrets or raw key events.
+
+The intended lifecycle is:
+
+1. Validate configuration and initialize critical resources.
+2. Capture the session background, when supported.
+3. Create and render an opaque surface for every output.
+4. Request the Wayland session lock.
+5. Wait for the compositor's `locked` event.
+6. Accept input and authenticate through PAM.
+7. Call `unlock_and_destroy` only after authentication succeeds.
+
+## Development workflow
+
+- Use stable Rust and keep `cargo fmt`, `cargo clippy`, and tests passing.
+- Prefer safe Rust. Any `unsafe` block requires a nearby safety explanation and a
+  focused review.
+- Add tests for state transitions, configuration validation, and failure paths.
+- Do not test an unreviewed real-lock path in the primary session.
+- Do not introduce a dependency without checking its maintenance status, license,
+  and role in the trusted computing base.
+
+## Git conventions
+
+- Write code, documentation, branches, and commit messages in English.
+- Use Conventional Commits, such as `feat:`, `fix:`, `docs:`, `test:`, `refactor:`,
+  `build:`, `ci:`, and `chore:`.
+- Each commit must implement one coherent change and remain reviewable on its own.
+- Keep commit subjects concise. Use a short body only when the reason cannot be
+  understood from the diff.
+- Do not add co-author trailers.
+- Do not mix formatting, refactoring, dependency changes, and features unless they
+  are inseparable parts of the same change.
+- Never rewrite or discard user changes without explicit permission.
