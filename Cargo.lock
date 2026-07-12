@@ -1777,6 +1777,8 @@ dependencies = [
  "eframe",
  "serde",
  "toml",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
