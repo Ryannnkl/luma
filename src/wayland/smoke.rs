@@ -41,9 +41,11 @@ pub fn run(timeout: Duration) -> Result<(), SmokeError> {
         .lock(&qh)
         .map_err(|error: SctkGlobalError| SmokeError::Lock(error.to_string()))?;
     let timer_lock = lock.clone();
+    let timer_connection = connection.clone();
     let timer = thread::spawn(move || {
         thread::sleep(timeout);
         timer_lock.unlock();
+        let _ = timer_connection.flush();
     });
     state.session_lock = Some(lock);
 
