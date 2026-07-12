@@ -37,16 +37,16 @@ use crate::{input::InputState, wayland::opaque::draw_lock_frame};
 ///
 /// Returns an error when Wayland globals cannot be bound or the event queue
 /// encounters a protocol failure.
-pub fn run(timeout: Duration) -> Result<(), SmokeError> {
-    let connection = Connection::connect_to_env().map_err(SmokeError::Connect)?;
+pub fn run(timeout: Duration) -> Result<(), LockError> {
+    let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
     let (globals, event_queue) =
-        registry_queue_init::<SmokeState>(&connection).map_err(SmokeError::Registry)?;
+        registry_queue_init::<SmokeState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
     let mut state = SmokeState::new(&globals, &qh)?;
     let lock = state
         .session_lock_state
         .lock(&qh)
-        .map_err(|error: SctkGlobalError| SmokeError::Lock(error.to_string()))?;
+        .map_err(|error: SctkGlobalError| LockError::Lock(error.to_string()))?;
     let timer_lock = lock.clone();
     let timer_connection = connection.clone();
     let timer = thread::spawn(move || {
@@ -60,15 +60,15 @@ pub fn run(timeout: Duration) -> Result<(), SmokeError> {
     while !state.finished {
         event_queue
             .blocking_dispatch(&mut state)
-            .map_err(SmokeError::Dispatch)?;
+            .map_err(LockError::Dispatch)?;
     }
 
-    timer.join().map_err(|_| SmokeError::TimerPanic)?;
+    timer.join().map_err(|_| LockError::TimerPanic)?;
     Ok(())
 }
 
 #[derive(Debug)]
-pub enum SmokeError {
+pub enum LockError {
     Connect(wayland_client::ConnectError),
     Registry(wayland_client::globals::GlobalError),
     Dispatch(wayland_client::DispatchError),
@@ -78,7 +78,7 @@ pub enum SmokeError {
     TimerPanic,
 }
 
-impl fmt::Display for SmokeError {
+impl fmt::Display for LockError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Connect(source) => write!(formatter, "could not connect to Wayland: {source}"),
@@ -94,7 +94,7 @@ impl fmt::Display for SmokeError {
     }
 }
 
-impl std::error::Error for SmokeError {}
+impl std::error::Error for LockError {}
 
 struct SmokeState {
     registry_state: RegistryState,
@@ -120,14 +120,14 @@ struct LockSurfaceState {
 }
 
 impl SmokeState {
-    fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, SmokeError> {
+    fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, LockError> {
         let compositor = globals
             .bind(qh, 1..=6, ())
-            .map_err(|error| SmokeError::Bind(error.to_string()))?;
+            .map_err(|error| LockError::Bind(error.to_string()))?;
         let shm_state =
-            Shm::bind(globals, qh).map_err(|error| SmokeError::Bind(error.to_string()))?;
+            Shm::bind(globals, qh).map_err(|error| LockError::Bind(error.to_string()))?;
         let pool =
-            SlotPool::new(1, &shm_state).map_err(|error| SmokeError::Buffer(error.to_string()))?;
+            SlotPool::new(1, &shm_state).map_err(|error| LockError::Buffer(error.to_string()))?;
 
         Ok(Self {
             registry_state: RegistryState::new(globals),
@@ -368,7 +368,7 @@ impl SmokeState {
         }
     }
 
-    fn render_surface(&mut self, index: usize) -> Result<(), SmokeError> {
+    fn render_surface(&mut self, index: usize) -> Result<(), LockError> {
         let Some(surface_state) = self.surfaces.get(index) else {
             return Ok(());
         };
@@ -380,15 +380,15 @@ impl SmokeState {
         }
         let stride = width
             .checked_mul(4)
-            .ok_or_else(|| SmokeError::Buffer("lock surface stride overflowed".to_owned()))?;
+            .ok_or_else(|| LockError::Buffer("lock surface stride overflowed".to_owned()))?;
         let (buffer, canvas) = self
             .pool
             .create_buffer(width, height, stride, wl_shm::Format::Argb8888)
-            .map_err(|error| SmokeError::Buffer(error.to_string()))?;
+            .map_err(|error| LockError::Buffer(error.to_string()))?;
         draw_lock_frame(canvas, width, height, self.input.character_count());
         buffer
             .attach_to(surface.wl_surface())
-            .map_err(|error| SmokeError::Buffer(error.to_string()))?;
+            .map_err(|error| LockError::Buffer(error.to_string()))?;
         surface.wl_surface().damage(0, 0, width, height);
         surface.wl_surface().commit();
         self.surfaces[index].buffer = Some(buffer);
