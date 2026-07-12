@@ -14,6 +14,7 @@ smithay-client-toolkit = "0.20.0"
 toml = "1.1.2"
 wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+zeroize = "1.9.0"
 
 [lints.rust]
 unsafe_code = "forbid"
