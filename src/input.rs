@@ -86,6 +86,14 @@ pub struct PasswordAttempt {
     bytes: Zeroizing<Vec<u8>>,
 }
 
+impl PasswordAttempt {
+    /// Borrows the password only for the authentication boundary.
+    #[must_use]
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
 impl Drop for PasswordAttempt {
     fn drop(&mut self) {
         self.bytes.zeroize();
