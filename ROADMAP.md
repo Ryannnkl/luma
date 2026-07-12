@@ -1,8 +1,8 @@
 # Luma implementation roadmap
 
-Luma will grow from a harmless visual prototype into a real session locker. Real
-locking remains disabled until its lifecycle and recovery behavior are tested in
-an isolated environment.
+Luma is growing from a harmless visual prototype into a real session locker.
+Authenticated locking is available only for isolated nested-compositor testing
+until the release gate is satisfied.
 
 ## Phase 1: repository foundation
 
@@ -20,10 +20,12 @@ an isolated environment.
 ## Phase 3: Wayland lock foundation
 
 - [x] Connect to Wayland and discover `ext-session-lock-v1` support.
-- [x] Track all outputs and their configure, scale, and transform events.
+- [x] Track outputs, configure lock surfaces, and handle output hotplug.
 - [x] Render an opaque fallback on every lock surface.
 - [x] Model and test the lock lifecycle as explicit state transitions.
 - [x] Exercise the implementation only in a nested compositor or virtual machine.
+- Scale, transform, suspend/resume, and renderer-failure scenarios still need
+  dedicated lock tests before primary-session use.
 
 ## Phase 4: authentication
 

@@ -18,10 +18,11 @@ protocols, beginning with `ext-session-lock-v1`.
   session or run login account-management rules while unlocking.
 - Never log, persist, clone unnecessarily, or expose password contents.
 - Clear sensitive input from memory immediately after each authentication attempt.
-- Prepare fallbacks before requesting a session lock. A rendering failure must
-  result in an opaque surface with a usable authentication prompt.
-- Cover every active output before confirming the locked state, and handle outputs
-  added, removed, resized, scaled, or transformed while locked.
+- Validate critical resources before requesting a session lock. After the
+  compositor's `locked` event, create an opaque fallback surface with a usable
+  authentication prompt for every active output.
+- Handle outputs added, removed, resized, scaled, or transformed while locked;
+  never leave a newly active output uncovered.
 - Keep demo mode separate from real locking. Demo mode must never authenticate a
   real user or acquire `ext-session-lock-v1`.
 - Test real locking in a nested compositor or virtual machine before testing it in
@@ -44,11 +45,11 @@ Keep security-sensitive code small and independent from presentation code:
 
 The intended lifecycle is:
 
-1. Validate configuration and initialize critical resources.
+1. Validate configuration, the PAM policy, and critical resources.
 2. Capture the session background, when supported.
-3. Create and render an opaque surface for every output.
-4. Request the Wayland session lock.
-5. Wait for the compositor's `locked` event.
+3. Request the Wayland session lock.
+4. Wait for the compositor's `locked` event.
+5. Create and render an opaque surface for every active output.
 6. Accept input and authenticate through PAM.
 7. Call `unlock_and_destroy` only after authentication succeeds.
 

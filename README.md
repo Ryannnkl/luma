@@ -5,8 +5,9 @@ Its primary target is niri. Support for other Wayland compositors implementing
 `ext-session-lock-v1` is a secondary, protocol-based goal.
 
 > [!WARNING]
-> Luma does not lock sessions yet. The current application is a harmless visual
-> demo and must not be used as a security boundary.
+> Luma's authenticated lock is still experimental. Test `--lock` only inside a
+> nested compositor or virtual machine; keep swaylock configured as recovery and
+> do not use Luma as the primary session keybinding yet.
 
 ## Current demo
 
@@ -81,6 +82,20 @@ cargo run -- --outputs
 This reports each output's name, logical size, scale, transform, and current
 mode. The same tracker will be used when Luma creates one lock surface per output.
 
+## Experimental authenticated lock
+
+Install the PAM policy described in [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md),
+then run the authenticated path only by following the watchdog procedure in
+[docs/TESTING.md](docs/TESTING.md):
+
+```sh
+target/release/luma --lock
+```
+
+The lock accepts input through Wayland and unlocks only after PAM succeeds. It
+does not yet provide the final blurred background, clock, retry feedback, or
+production integration with niri and wlogout.
+
 ## Development checks
 
 ```sh
@@ -92,12 +107,14 @@ cargo test
 See [ROADMAP.md](ROADMAP.md) for the staged implementation plan and
 [AGENTS.md](AGENTS.md) for security invariants and contribution rules. Real lock
 work must follow the isolated procedure in [docs/TESTING.md](docs/TESTING.md).
+The current runtime design and known limitations are recorded in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Security status
 
-Real session locking and PAM authentication are intentionally unavailable. They
-will be introduced only after the visual layer, lock lifecycle, opaque fallback,
-and isolated test environment are ready.
+Real session locking and PAM authentication exist as an experimental nested-test
+path. They are not approved for the primary session until the release gate in
+[ROADMAP.md](ROADMAP.md) is satisfied.
 
 ## License
 

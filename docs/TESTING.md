@@ -55,7 +55,7 @@ lock acquired inside it covers only the nested compositor.
 
 ## Validate the environment with the existing locker
 
-Before testing Luma's future lock client, run the installed swaylock-effects
+Before testing Luma's authenticated lock client, run the installed swaylock-effects
 binary from the terminal inside nested niri:
 
 ```sh
@@ -93,7 +93,7 @@ clients. It does not unlock or terminate the real desktop session.
 
 ## Luma protocol test gate
 
-Luma must not request `ext-session-lock-v1` until all of these are true:
+Before promoting Luma to the primary session, all of these must be true:
 
 - the lock client is launched inside nested niri;
 - every output receives an opaque fallback surface;
@@ -115,7 +115,7 @@ systemd-run --user --unit=luma-smoke-watchdog --on-active=30s \
   systemctl --user stop luma-lock-smoke.service
 systemd-run --user --unit=luma-lock-smoke --collect \
   niri -- env LUMA_ALLOW_LOCK_SMOKE=1 \
-  /absolute/path/to/luma --lock-smoke
+  /absolute/path/to/target/debug/luma --lock-smoke
 ```
 
 The nested niri window will be covered by Luma's opaque surface, then unlock
