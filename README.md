@@ -60,6 +60,18 @@ Positions use normalized coordinates from `0.0` to `1.0`. Time and date formats
 use Chrono/strftime directives: `%H` is a 24-hour value, `%I` is a 12-hour value,
 `%M` is minutes, and `%p` is AM/PM. Colors accept `#RRGGBB` or `#RRGGBBAA`.
 
+## Wayland capability check
+
+Inspect the active compositor without acquiring a session lock:
+
+```sh
+cargo run -- --check
+```
+
+The command reports `ext_session_lock_manager_v1`, compositor and shared-memory
+versions, plus the number of outputs and seats. It exits unsuccessfully when the
+minimum opaque lock-surface foundation is unavailable.
+
 ## Development checks
 
 ```sh
