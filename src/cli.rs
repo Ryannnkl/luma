@@ -1,10 +1,11 @@
 use std::{fmt, path::PathBuf};
 
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --demo         Start the harmless visual demo\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
     Demo { config: Option<PathBuf> },
+    Check,
     Help,
     Version,
 }
@@ -34,6 +35,7 @@ where
     }
 
     let command = match argument.as_str() {
+        "--check" => Command::Check,
         "-h" | "--help" => Command::Help,
         "-V" | "--version" => Command::Version,
         _ => return Err(ParseError::unknown(&argument)),
@@ -99,6 +101,11 @@ mod tests {
             parse(["--demo".to_owned()]),
             Ok(Command::Demo { config: None })
         );
+    }
+
+    #[test]
+    fn recognizes_capability_check() {
+        assert_eq!(parse(["--check".to_owned()]), Ok(Command::Check));
     }
 
     #[test]
