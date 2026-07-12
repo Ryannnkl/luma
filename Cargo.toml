@@ -9,6 +9,8 @@ license = "MIT"
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 eframe = { version = "0.35.0", default-features = false, features = ["accesskit", "default_fonts", "wayland", "wgpu", "x11"] }
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "1.1.2"
 
 [lints.rust]
 unsafe_code = "forbid"
