@@ -9,7 +9,15 @@ use cli::Command;
 fn main() -> ExitCode {
     match cli::parse(env::args().skip(1)) {
         Ok(Command::Demo) => {
-            if let Err(error) = demo::run() {
+            let config = match config::Config::load(None) {
+                Ok(config) => config,
+                Err(error) => {
+                    eprintln!("luma: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+
+            if let Err(error) = demo::run(config) {
                 eprintln!("luma: could not start demo: {error}");
                 return ExitCode::FAILURE;
             }

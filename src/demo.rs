@@ -1,45 +1,47 @@
 use std::time::{Duration, Instant};
 
-use chrono::{Local, Timelike};
+use chrono::Local;
 use eframe::egui::{
     self, Align2, Color32, ColorImage, Event, FontFamily, FontId, Key, Pos2, Rect, TextureHandle,
     TextureOptions, Vec2,
 };
 
-const MAX_INPUT_LENGTH: usize = 12;
+use crate::config::{BackgroundConfig, Color, Config, DateConfig, DemoLabelConfig, InputConfig};
 
-pub fn run() -> eframe::Result {
+pub fn run(config: Config) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Luma Demo")
-            .with_inner_size([1280.0, 720.0])
+            .with_inner_size([config.window.width, config.window.height])
             .with_min_inner_size([640.0, 480.0])
-            .with_maximized(true),
+            .with_maximized(config.window.maximized),
         ..Default::default()
     };
 
     eframe::run_native(
         "Luma Demo",
         options,
-        Box::new(|creation_context| Ok(Box::new(DemoApp::new(creation_context)))),
+        Box::new(|creation_context| Ok(Box::new(DemoApp::new(creation_context, config)))),
     )
 }
 
 struct DemoApp {
+    config: Config,
     background: TextureHandle,
     input_length: usize,
     feedback_started_at: Option<Instant>,
 }
 
 impl DemoApp {
-    fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
+    fn new(creation_context: &eframe::CreationContext<'_>, config: Config) -> Self {
         let background = creation_context.egui_ctx.load_texture(
             "luma-demo-background",
-            create_background(),
+            create_background(&config.background),
             TextureOptions::LINEAR,
         );
 
         Self {
+            config,
             background,
             input_length: 0,
             feedback_started_at: None,
@@ -76,16 +78,22 @@ impl DemoApp {
     }
 
     fn push_text(&mut self, text: &str) {
+        if !self.config.input.enabled {
+            return;
+        }
+
         let character_count = text
             .chars()
             .filter(|character| !character.is_control())
             .count();
-        self.input_length = (self.input_length + character_count).min(MAX_INPUT_LENGTH);
+        self.input_length =
+            (self.input_length + character_count).min(self.config.input.max_characters);
     }
 
     fn is_showing_feedback(&self) -> bool {
-        self.feedback_started_at
-            .is_some_and(|started_at| started_at.elapsed() < Duration::from_secs(2))
+        self.feedback_started_at.is_some_and(|started_at| {
+            started_at.elapsed() < Duration::from_millis(self.config.input.feedback_duration_ms)
+        })
     }
 
     fn paint(&self, ui: &egui::Ui) {
@@ -98,11 +106,17 @@ impl DemoApp {
             Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
             Color32::WHITE,
         );
-        painter.rect_filled(rect, 0.0, Color32::from_black_alpha(82));
+        painter.rect_filled(rect, 0.0, to_egui_color(self.config.background.dim_color));
 
-        paint_demo_label(ui);
-        paint_clock(ui);
-        paint_password_indicator(ui, self.input_length, self.is_showing_feedback());
+        paint_demo_label(ui, &self.config.demo_label);
+        paint_clock(ui, &self.config);
+        paint_date(ui, &self.config.date);
+        paint_password_indicator(
+            ui,
+            &self.config.input,
+            self.input_length,
+            self.is_showing_feedback(),
+        );
     }
 }
 
@@ -123,91 +137,140 @@ impl eframe::App for DemoApp {
     }
 }
 
-fn paint_demo_label(ui: &egui::Ui) {
+fn paint_demo_label(ui: &egui::Ui, config: &DemoLabelConfig) {
+    if !config.enabled {
+        return;
+    }
+
     let rect = ui.max_rect();
-    let label_rect = Rect::from_min_size(
-        rect.left_top() + Vec2::new(24.0, 24.0),
-        Vec2::new(174.0, 34.0),
+    let label_rect = Rect::from_center_size(
+        position(rect, config.x, config.y),
+        Vec2::new(config.width, config.height),
     );
 
-    ui.painter()
-        .rect_filled(label_rect, 17.0, Color32::from_black_alpha(112));
+    ui.painter().rect_filled(
+        label_rect,
+        config.height / 2.0,
+        to_egui_color(config.background_color),
+    );
     ui.painter().text(
         label_rect.center(),
         Align2::CENTER_CENTER,
-        "DEMO  ·  ESC TO CLOSE",
-        FontId::new(12.0, FontFamily::Proportional),
-        Color32::from_white_alpha(210),
+        &config.text,
+        FontId::new(config.text_size, FontFamily::Proportional),
+        to_egui_color(config.text_color),
     );
 }
 
-fn paint_clock(ui: &egui::Ui) {
+fn paint_clock(ui: &egui::Ui, config: &Config) {
+    if !config.clock.enabled {
+        return;
+    }
+
     let rect = ui.max_rect();
     let now = Local::now();
-    let hours = format!("{:02}", now.hour());
-    let minutes = format!("{:02}", now.minute());
-    let clock_size = (rect.height() * 0.22).clamp(96.0, 184.0);
-    let line_gap = clock_size * 0.68;
-    let center = rect.center() - Vec2::new(0.0, rect.height() * 0.04);
+    let hours = now.format(&config.clock.hour_format).to_string();
+    let minutes = now.format(&config.clock.minute_format).to_string();
+    let clock_size = (rect.height() * config.clock.size_ratio)
+        .clamp(config.clock.min_size, config.clock.max_size);
+    let line_gap = clock_size * config.clock.line_gap_ratio;
+    let center = position(rect, config.clock.x, config.clock.y);
     let font = FontId::new(clock_size, FontFamily::Proportional);
 
     ui.painter().text(
-        center - Vec2::new(clock_size * 0.10, line_gap * 0.55),
+        center
+            + Vec2::new(
+                clock_size * config.clock.hour_offset_x_ratio,
+                -line_gap * 0.55,
+            ),
         Align2::CENTER_CENTER,
         hours,
         font.clone(),
-        Color32::from_rgb(147, 230, 190),
+        to_egui_color(config.clock.hour_color),
     );
     ui.painter().text(
-        center + Vec2::new(clock_size * 0.16, line_gap * 0.55),
+        center
+            + Vec2::new(
+                clock_size * config.clock.minute_offset_x_ratio,
+                line_gap * 0.55,
+            ),
         Align2::CENTER_CENTER,
         minutes,
         font,
-        Color32::from_rgb(246, 248, 247),
+        to_egui_color(config.clock.minute_color),
+    );
+}
+
+fn paint_date(ui: &egui::Ui, config: &DateConfig) {
+    if !config.enabled {
+        return;
+    }
+
+    let rect = ui.max_rect();
+    ui.painter().text(
+        position(rect, config.x, config.y),
+        Align2::CENTER_CENTER,
+        Local::now().format(&config.format).to_string(),
+        FontId::new(config.size, FontFamily::Proportional),
+        to_egui_color(config.color),
     );
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn paint_password_indicator(ui: &egui::Ui, input_length: usize, showing_feedback: bool) {
+fn paint_password_indicator(
+    ui: &egui::Ui,
+    config: &InputConfig,
+    input_length: usize,
+    showing_feedback: bool,
+) {
+    if !config.enabled {
+        return;
+    }
+
     let rect = ui.max_rect();
     let indicator_rect = Rect::from_center_size(
-        Pos2::new(rect.center().x, rect.bottom() - 54.0),
-        Vec2::new(156.0, 34.0),
+        position(rect, config.x, config.y),
+        Vec2::new(config.width, config.height),
     );
     let fill = if showing_feedback {
-        Color32::from_rgba_unmultiplied(38, 92, 72, 210)
+        to_egui_color(config.feedback_background_color)
     } else {
-        Color32::from_black_alpha(155)
+        to_egui_color(config.background_color)
     };
 
-    ui.painter().rect_filled(indicator_rect, 17.0, fill);
+    ui.painter()
+        .rect_filled(indicator_rect, config.height / 2.0, fill);
 
     if showing_feedback {
         ui.painter().text(
             indicator_rect.center(),
             Align2::CENTER_CENTER,
-            "DEMO ONLY",
+            &config.feedback_text,
             FontId::new(11.0, FontFamily::Proportional),
-            Color32::from_rgb(190, 244, 216),
+            to_egui_color(config.feedback_text_color),
         );
         return;
     }
 
-    let visible_dots = input_length.clamp(6, MAX_INPUT_LENGTH);
-    let spacing = 10.0;
+    let visible_dots = input_length.clamp(config.min_dots, config.max_characters);
+    let spacing = config.dot_spacing;
     let start_x =
         indicator_rect.center().x - (visible_dots.saturating_sub(1) as f32 * spacing / 2.0);
 
     for index in 0..visible_dots {
         let is_filled = index < input_length;
         let color = if is_filled {
-            Color32::from_rgb(236, 244, 240)
+            to_egui_color(config.filled_dot_color)
         } else {
-            Color32::from_white_alpha(62)
+            to_egui_color(config.empty_dot_color)
         };
         ui.painter().circle_filled(
             Pos2::new(start_x + index as f32 * spacing, indicator_rect.center().y),
-            if is_filled { 2.7 } else { 2.1 },
+            if is_filled {
+                config.filled_dot_radius
+            } else {
+                config.empty_dot_radius
+            },
             color,
         );
     }
@@ -218,7 +281,7 @@ fn paint_password_indicator(ui: &egui::Ui, input_length: usize, showing_feedback
     clippy::cast_precision_loss,
     clippy::cast_sign_loss
 )]
-fn create_background() -> ColorImage {
+fn create_background(config: &BackgroundConfig) -> ColorImage {
     const WIDTH: usize = 160;
     const HEIGHT: usize = 90;
     let mut pixels = Vec::with_capacity(WIDTH * HEIGHT);
@@ -227,24 +290,44 @@ fn create_background() -> ColorImage {
         for x in 0..WIDTH {
             let x = x as f32 / WIDTH as f32;
             let y = y as f32 / HEIGHT as f32;
-            let green = soft_spot(x, y, 0.18, 0.24, 8.0);
-            let blue = soft_spot(x, y, 0.76, 0.18, 7.0);
-            let amber = soft_spot(x, y, 0.69, 0.60, 12.0);
-            let shadow = soft_spot(x, y, 0.50, 1.05, 4.0);
+            let mut color = config.base_color.channels();
+            for spot in &config.spots {
+                let weight = soft_spot(x, y, spot.x, spot.y, spot.falloff) * spot.strength;
+                color = blend(color, spot.color.channels(), weight);
+            }
 
-            let red = 24.0 + green * 35.0 + blue * 11.0 + amber * 94.0 - shadow * 12.0;
-            let green_channel = 52.0 + green * 62.0 + blue * 42.0 + amber * 55.0 - shadow * 16.0;
-            let blue_channel = 52.0 + green * 43.0 + blue * 61.0 + amber * 20.0 - shadow * 15.0;
-
-            pixels.push(Color32::from_rgb(
-                red.clamp(0.0, 255.0) as u8,
-                green_channel.clamp(0.0, 255.0) as u8,
-                blue_channel.clamp(0.0, 255.0) as u8,
-            ));
+            pixels.push(Color32::from_rgb(color[0], color[1], color[2]));
         }
     }
 
     ColorImage::new([WIDTH, HEIGHT], pixels)
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn blend(base: [u8; 4], overlay: [u8; 4], weight: f32) -> [u8; 4] {
+    let blend_channel = |base: u8, overlay: u8| {
+        (f32::from(base) + (f32::from(overlay) - f32::from(base)) * weight.clamp(0.0, 1.0)).round()
+            as u8
+    };
+
+    [
+        blend_channel(base[0], overlay[0]),
+        blend_channel(base[1], overlay[1]),
+        blend_channel(base[2], overlay[2]),
+        255,
+    ]
+}
+
+fn position(rect: Rect, x: f32, y: f32) -> Pos2 {
+    Pos2::new(
+        rect.left() + rect.width() * x,
+        rect.top() + rect.height() * y,
+    )
+}
+
+fn to_egui_color(color: Color) -> Color32 {
+    let [red, green, blue, alpha] = color.channels();
+    Color32::from_rgba_unmultiplied(red, green, blue, alpha)
 }
 
 fn soft_spot(x: f32, y: f32, center_x: f32, center_y: f32, falloff: f32) -> f32 {
@@ -256,7 +339,9 @@ fn soft_spot(x: f32, y: f32, center_x: f32, center_y: f32, falloff: f32) -> f32 
 mod tests {
     use eframe::egui;
 
-    use super::{DemoApp, MAX_INPUT_LENGTH};
+    use crate::config::Config;
+
+    use super::DemoApp;
 
     #[test]
     fn input_length_is_bounded() {
@@ -264,7 +349,7 @@ mod tests {
 
         app.push_text("a very long demo input");
 
-        assert_eq!(app.input_length, MAX_INPUT_LENGTH);
+        assert_eq!(app.input_length, app.config.input.max_characters);
     }
 
     #[test]
@@ -286,6 +371,7 @@ mod tests {
         );
 
         DemoApp {
+            config: Config::default(),
             background,
             input_length: 0,
             feedback_started_at: None,
