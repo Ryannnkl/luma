@@ -1,10 +1,11 @@
 use std::{fmt, path::PathBuf};
 
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
     Demo { config: Option<PathBuf> },
+    Lock,
     Check,
     Outputs,
     LockSmoke,
@@ -37,6 +38,7 @@ where
     }
 
     let command = match argument.as_str() {
+        "--lock" => Command::Lock,
         "--check" => Command::Check,
         "--outputs" => Command::Outputs,
         "--lock-smoke" => Command::LockSmoke,
@@ -123,6 +125,11 @@ mod tests {
     }
 
     #[test]
+    fn recognizes_authenticated_lock() {
+        assert_eq!(parse(["--lock".to_owned()]), Ok(Command::Lock));
+    }
+
+    #[test]
     fn accepts_custom_config_path() {
         assert_eq!(
             parse([
@@ -138,9 +145,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_arguments() {
-        let error = parse(["--lock".to_owned()]).expect_err("--lock must not be available yet");
+        let error = parse(["--unknown".to_owned()]).expect_err("argument should be rejected");
 
-        assert!(error.to_string().contains("unknown argument `--lock`"));
+        assert!(error.to_string().contains("unknown argument `--unknown`"));
     }
 
     #[test]

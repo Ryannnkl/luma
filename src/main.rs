@@ -31,6 +31,7 @@ fn main() -> ExitCode {
         }
         Ok(Command::Check) => check_wayland(),
         Ok(Command::Outputs) => list_outputs(),
+        Ok(Command::Lock) => run_lock(),
         Ok(Command::LockSmoke) => run_lock_smoke(),
         Ok(Command::Help) => {
             println!("{}", cli::help());
@@ -132,6 +133,21 @@ fn run_lock_smoke() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("luma: lock smoke test failed: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_lock() -> ExitCode {
+    if let Err(error) = auth::validate_service() {
+        eprintln!("luma: refusing to lock: {error}");
+        return ExitCode::FAILURE;
+    }
+
+    match wayland::run_lock() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("luma: session lock failed: {error}");
             ExitCode::FAILURE
         }
     }

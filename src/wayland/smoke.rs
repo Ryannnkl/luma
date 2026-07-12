@@ -26,7 +26,73 @@ use wayland_client::{
     protocol::{wl_compositor, wl_output, wl_shm, wl_surface},
 };
 
-use crate::{input::InputState, wayland::opaque::draw_lock_frame};
+use crate::{
+    auth::{AuthenticationResult, authenticate_current_user},
+    input::{InputState, PasswordAttempt},
+    wayland::opaque::draw_lock_frame,
+};
+
+/// Runs the authenticated Luma session locker without a timed bypass.
+///
+/// # Errors
+///
+/// Returns an error when critical Wayland resources are unavailable, the compositor rejects the
+/// lock, or the authenticated unlock request cannot be delivered.
+pub fn run_authenticated() -> Result<(), LockError> {
+    let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
+    let (globals, event_queue) =
+        registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
+    let qh = event_queue.handle();
+    let mut state = LockState::new(&globals, &qh)?;
+    if state.output_state.outputs().next().is_none() {
+        return Err(LockError::NoOutputs);
+    }
+
+    let lock = state
+        .lock_manager
+        .lock(&qh)
+        .map_err(|error: SctkGlobalError| LockError::Lock(error.to_string()))?;
+    state.session_lock = Some(lock);
+
+    let mut event_queue = event_queue;
+    while !state.finished {
+        event_queue
+            .blocking_dispatch(&mut state)
+            .map_err(LockError::Dispatch)?;
+
+        let Some(password) = state.pending_attempt.take() else {
+            continue;
+        };
+        let lock_is_active = state
+            .session_lock
+            .as_ref()
+            .is_some_and(SessionLock::is_locked);
+        if !lock_is_active {
+            continue;
+        }
+
+        connection.flush().map_err(LockError::Flush)?;
+        if authentication_authorizes_unlock(authenticate_current_user(password)) {
+            state.unlock_authorized = true;
+            if let Some(session_lock) = &state.session_lock {
+                session_lock.unlock();
+                connection.flush().map_err(LockError::Flush)?;
+            }
+        }
+    }
+
+    if state.unlock_authorized {
+        Ok(())
+    } else {
+        Err(LockError::FinishedWithoutAuthentication)
+    }
+}
+
+fn authentication_authorizes_unlock(
+    result: Result<AuthenticationResult, crate::auth::AuthenticationError>,
+) -> bool {
+    matches!(result, Ok(AuthenticationResult::Authenticated))
+}
 
 /// Runs a deliberately bounded opaque lock smoke test.
 ///
@@ -61,6 +127,7 @@ pub fn run(timeout: Duration) -> Result<(), LockError> {
         event_queue
             .blocking_dispatch(&mut state)
             .map_err(LockError::Dispatch)?;
+        drop(state.pending_attempt.take());
     }
 
     timer.join().map_err(|_| LockError::TimerPanic)?;
@@ -75,6 +142,9 @@ pub enum LockError {
     Bind(String),
     Lock(String),
     Buffer(String),
+    Flush(wayland_client::backend::WaylandError),
+    NoOutputs,
+    FinishedWithoutAuthentication,
     TimerPanic,
 }
 
@@ -89,6 +159,11 @@ impl fmt::Display for LockError {
             Self::Bind(source) => write!(formatter, "could not bind a lock dependency: {source}"),
             Self::Lock(source) => write!(formatter, "could not request the session lock: {source}"),
             Self::Buffer(source) => write!(formatter, "could not create the lock buffer: {source}"),
+            Self::Flush(source) => write!(formatter, "could not flush Wayland requests: {source}"),
+            Self::NoOutputs => formatter.write_str("Wayland reported no outputs to lock"),
+            Self::FinishedWithoutAuthentication => {
+                formatter.write_str("the session lock ended without an authenticated unlock")
+            }
             Self::TimerPanic => formatter.write_str("lock smoke timer panicked"),
         }
     }
@@ -102,12 +177,14 @@ struct LockState {
     seat_state: SeatState,
     keyboard: Option<wayland_client::protocol::wl_keyboard::WlKeyboard>,
     input: InputState,
+    pending_attempt: Option<PasswordAttempt>,
     shm_state: Shm,
     pool: SlotPool,
     compositor: wl_compositor::WlCompositor,
     lock_manager: SessionLockState,
     session_lock: Option<SessionLock>,
     surfaces: Vec<LockSurfaceState>,
+    unlock_authorized: bool,
     finished: bool,
 }
 
@@ -135,12 +212,14 @@ impl LockState {
             seat_state: SeatState::new(globals, qh),
             keyboard: None,
             input: InputState::new(64),
+            pending_attempt: None,
             shm_state,
             pool,
             compositor,
             lock_manager: SessionLockState::new(globals, qh),
             session_lock: None,
             surfaces: Vec::new(),
+            unlock_authorized: false,
             finished: false,
         })
     }
@@ -231,6 +310,7 @@ impl SeatHandler for LockState {
         if capability == Capability::Keyboard {
             self.keyboard = None;
             self.input.clear();
+            self.pending_attempt = None;
             self.redraw_input_indicator();
         }
     }
@@ -243,6 +323,7 @@ impl SeatHandler for LockState {
     ) {
         self.keyboard = None;
         self.input.clear();
+        self.pending_attempt = None;
         self.redraw_input_indicator();
     }
 }
@@ -269,6 +350,7 @@ impl KeyboardHandler for LockState {
         _serial: u32,
     ) {
         self.input.clear();
+        self.pending_attempt = None;
         self.redraw_input_indicator();
     }
 
@@ -350,9 +432,12 @@ impl LockState {
     }
 
     fn handle_key(&mut self, event: KeyEvent) {
+        if self.pending_attempt.is_some() {
+            return;
+        }
         match event.keysym {
             Keysym::BackSpace => self.input.backspace(),
-            Keysym::Return => drop(self.input.submit()),
+            Keysym::Return => self.pending_attempt = self.input.submit(),
             _ => {
                 if let Some(text) = event.utf8 {
                     self.input.push_text(&text);
@@ -419,6 +504,7 @@ impl SessionLockHandler for LockState {
         self.finished = true;
         self.session_lock = None;
         self.input.clear();
+        self.pending_attempt = None;
     }
 
     fn configure(
@@ -457,9 +543,26 @@ delegate_noop!(LockState: ignore wl_surface::WlSurface);
 
 #[cfg(test)]
 mod tests {
+    use crate::auth::{AuthenticationError, AuthenticationResult};
+
+    use super::authentication_authorizes_unlock;
+
     #[test]
     fn smoke_timeout_is_explicitly_bounded_by_the_caller() {
         let timeout = std::time::Duration::from_secs(5);
         assert!(timeout <= std::time::Duration::from_secs(30));
+    }
+
+    #[test]
+    fn only_successful_pam_authentication_authorizes_unlock() {
+        assert!(authentication_authorizes_unlock(Ok(
+            AuthenticationResult::Authenticated
+        )));
+        assert!(!authentication_authorizes_unlock(Ok(
+            AuthenticationResult::Denied
+        )));
+        assert!(!authentication_authorizes_unlock(Err(
+            AuthenticationError::PamServiceUnavailable
+        )));
     }
 }
