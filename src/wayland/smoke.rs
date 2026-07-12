@@ -1,4 +1,7 @@
-use std::{fmt, thread, time::Duration};
+use std::fmt;
+
+#[cfg(debug_assertions)]
+use std::{thread, time::Duration};
 
 use smithay_client_toolkit::error::GlobalError as SctkGlobalError;
 use smithay_client_toolkit::{
@@ -103,6 +106,7 @@ fn authentication_authorizes_unlock(
 ///
 /// Returns an error when Wayland globals cannot be bound or the event queue
 /// encounters a protocol failure.
+#[cfg(debug_assertions)]
 pub fn run(timeout: Duration) -> Result<(), LockError> {
     let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
     let (globals, event_queue) =
@@ -145,6 +149,7 @@ pub enum LockError {
     Flush(wayland_client::backend::WaylandError),
     NoOutputs,
     FinishedWithoutAuthentication,
+    #[cfg(debug_assertions)]
     TimerPanic,
 }
 
@@ -164,6 +169,7 @@ impl fmt::Display for LockError {
             Self::FinishedWithoutAuthentication => {
                 formatter.write_str("the session lock ended without an authenticated unlock")
             }
+            #[cfg(debug_assertions)]
             Self::TimerPanic => formatter.write_str("lock smoke timer panicked"),
         }
     }
@@ -548,6 +554,7 @@ mod tests {
     use super::authentication_authorizes_unlock;
 
     #[test]
+    #[cfg(debug_assertions)]
     fn smoke_timeout_is_explicitly_bounded_by_the_caller() {
         let timeout = std::time::Duration::from_secs(5);
         assert!(timeout <= std::time::Duration::from_secs(30));

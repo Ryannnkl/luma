@@ -5,7 +5,10 @@ mod demo;
 pub mod input;
 pub mod wayland;
 
-use std::{env, process::ExitCode, time::Duration};
+use std::{env, process::ExitCode};
+
+#[cfg(debug_assertions)]
+use std::time::Duration;
 
 use cli::Command;
 
@@ -32,6 +35,7 @@ fn main() -> ExitCode {
         Ok(Command::Check) => check_wayland(),
         Ok(Command::Outputs) => list_outputs(),
         Ok(Command::Lock) => run_lock(),
+        #[cfg(debug_assertions)]
         Ok(Command::LockSmoke) => run_lock_smoke(),
         Ok(Command::Help) => {
             println!("{}", cli::help());
@@ -121,6 +125,7 @@ fn list_outputs() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+#[cfg(debug_assertions)]
 fn run_lock_smoke() -> ExitCode {
     if env::var("LUMA_ALLOW_LOCK_SMOKE").as_deref() != Ok("1") {
         eprintln!(

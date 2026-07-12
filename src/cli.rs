@@ -1,13 +1,20 @@
 use std::{fmt, path::PathBuf};
 
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
+#[cfg(debug_assertions)]
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (debug builds, nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
+
+#[cfg(not(debug_assertions))]
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
-    Demo { config: Option<PathBuf> },
+    Demo {
+        config: Option<PathBuf>,
+    },
     Lock,
     Check,
     Outputs,
+    #[cfg(debug_assertions)]
     LockSmoke,
     Help,
     Version,
@@ -41,6 +48,7 @@ where
         "--lock" => Command::Lock,
         "--check" => Command::Check,
         "--outputs" => Command::Outputs,
+        #[cfg(debug_assertions)]
         "--lock-smoke" => Command::LockSmoke,
         "-h" | "--help" => Command::Help,
         "-V" | "--version" => Command::Version,
@@ -120,6 +128,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn recognizes_lock_smoke() {
         assert_eq!(parse(["--lock-smoke".to_owned()]), Ok(Command::LockSmoke));
     }
