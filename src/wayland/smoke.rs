@@ -112,6 +112,7 @@ struct SmokeState {
 }
 
 struct LockSurfaceState {
+    output: wl_output::WlOutput,
     surface: SessionLockSurface,
     buffer: Option<Buffer>,
     width: i32,
@@ -161,9 +162,10 @@ impl OutputHandler for SmokeState {
     fn new_output(
         &mut self,
         _connection: &Connection,
-        _queue_handle: &QueueHandle<Self>,
-        _output: wl_output::WlOutput,
+        queue_handle: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
     ) {
+        self.add_output_surface(queue_handle, output);
     }
 
     fn update_output(
@@ -178,8 +180,10 @@ impl OutputHandler for SmokeState {
         &mut self,
         _connection: &Connection,
         _queue_handle: &QueueHandle<Self>,
-        _output: wl_output::WlOutput,
+        output: wl_output::WlOutput,
     ) {
+        self.surfaces
+            .retain(|surface_state| surface_state.output != output);
     }
 }
 
@@ -314,6 +318,37 @@ impl KeyboardHandler for SmokeState {
 }
 
 impl SmokeState {
+    fn add_output_surface(
+        &mut self,
+        queue_handle: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
+        if self
+            .surfaces
+            .iter()
+            .any(|surface_state| surface_state.output == output)
+        {
+            return;
+        }
+        let Some(session_lock) = self
+            .session_lock
+            .as_ref()
+            .filter(|session_lock| session_lock.is_locked())
+        else {
+            return;
+        };
+
+        let surface = self.compositor.create_surface(queue_handle, ());
+        let lock_surface = session_lock.create_lock_surface(surface, &output, queue_handle);
+        self.surfaces.push(LockSurfaceState {
+            output,
+            surface: lock_surface,
+            buffer: None,
+            width: 0,
+            height: 0,
+        });
+    }
+
     fn handle_key(&mut self, event: KeyEvent) {
         match event.keysym {
             Keysym::BackSpace => self.input.backspace(),
@@ -368,16 +403,10 @@ impl SessionLockHandler for SmokeState {
         qh: &QueueHandle<Self>,
         session_lock: SessionLock,
     ) {
-        let outputs = self.output_state.outputs();
+        self.session_lock = Some(session_lock);
+        let outputs: Vec<_> = self.output_state.outputs().collect();
         for output in outputs {
-            let surface = self.compositor.create_surface(qh, ());
-            let lock_surface = session_lock.create_lock_surface(surface, &output, qh);
-            self.surfaces.push(LockSurfaceState {
-                surface: lock_surface,
-                buffer: None,
-                width: 0,
-                height: 0,
-            });
+            self.add_output_surface(qh, output);
         }
     }
 
