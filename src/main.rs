@@ -1,4 +1,5 @@
 mod cli;
+pub mod config;
 mod demo;
 
 use std::{env, process::ExitCode};
