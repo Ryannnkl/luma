@@ -2,11 +2,13 @@
 name = "luma"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.92"
 description = "A secure and customizable Wayland session locker"
 license = "MIT"
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+eframe = { version = "0.35.0", default-features = false, features = ["accesskit", "default_fonts", "wayland", "wgpu", "x11"] }
 
 [lints.rust]
 unsafe_code = "forbid"
