@@ -26,7 +26,7 @@ use wayland_client::{
     protocol::{wl_compositor, wl_output, wl_shm, wl_surface},
 };
 
-use crate::input::InputState;
+use crate::{input::InputState, wayland::opaque::draw_lock_frame};
 
 /// Runs a deliberately bounded opaque lock smoke test.
 ///
@@ -114,6 +114,8 @@ struct SmokeState {
 struct LockSurfaceState {
     surface: SessionLockSurface,
     buffer: Option<Buffer>,
+    width: i32,
+    height: i32,
 }
 
 impl SmokeState {
@@ -225,6 +227,7 @@ impl SeatHandler for SmokeState {
         if capability == Capability::Keyboard {
             self.keyboard = None;
             self.input.clear();
+            self.redraw_input_indicator();
         }
     }
 
@@ -236,6 +239,7 @@ impl SeatHandler for SmokeState {
     ) {
         self.keyboard = None;
         self.input.clear();
+        self.redraw_input_indicator();
     }
 }
 
@@ -261,6 +265,7 @@ impl KeyboardHandler for SmokeState {
         _serial: u32,
     ) {
         self.input.clear();
+        self.redraw_input_indicator();
     }
 
     fn press_key(
@@ -319,6 +324,40 @@ impl SmokeState {
                 }
             }
         }
+        self.redraw_input_indicator();
+    }
+
+    fn redraw_input_indicator(&mut self) {
+        for index in 0..self.surfaces.len() {
+            let _ = self.render_surface(index);
+        }
+    }
+
+    fn render_surface(&mut self, index: usize) -> Result<(), SmokeError> {
+        let Some(surface_state) = self.surfaces.get(index) else {
+            return Ok(());
+        };
+        let width = surface_state.width;
+        let height = surface_state.height;
+        let surface = surface_state.surface.clone();
+        if width <= 0 || height <= 0 {
+            return Ok(());
+        }
+        let stride = width
+            .checked_mul(4)
+            .ok_or_else(|| SmokeError::Buffer("lock surface stride overflowed".to_owned()))?;
+        let (buffer, canvas) = self
+            .pool
+            .create_buffer(width, height, stride, wl_shm::Format::Argb8888)
+            .map_err(|error| SmokeError::Buffer(error.to_string()))?;
+        draw_lock_frame(canvas, width, height, self.input.character_count());
+        buffer
+            .attach_to(surface.wl_surface())
+            .map_err(|error| SmokeError::Buffer(error.to_string()))?;
+        surface.wl_surface().damage(0, 0, width, height);
+        surface.wl_surface().commit();
+        self.surfaces[index].buffer = Some(buffer);
+        Ok(())
     }
 }
 
@@ -336,6 +375,8 @@ impl SessionLockHandler for SmokeState {
             self.surfaces.push(LockSurfaceState {
                 surface: lock_surface,
                 buffer: None,
+                width: 0,
+                height: 0,
             });
         }
     }
@@ -370,26 +411,9 @@ impl SessionLockHandler for SmokeState {
         let (width, height) = configure.new_size;
         let width = i32::try_from(width).unwrap_or(i32::MAX);
         let height = i32::try_from(height).unwrap_or(i32::MAX);
-        let stride = width.saturating_mul(4);
-        let Ok((buffer, canvas)) =
-            self.pool
-                .create_buffer(width, height, stride, wl_shm::Format::Argb8888)
-        else {
-            self.finished = true;
-            return;
-        };
-
-        for pixel in canvas.chunks_exact_mut(4) {
-            pixel.copy_from_slice(&[18, 26, 28, 255]);
-        }
-
-        if buffer.attach_to(surface.wl_surface()).is_err() {
-            self.finished = true;
-            return;
-        }
-        surface.wl_surface().damage(0, 0, width, height);
-        surface.wl_surface().commit();
-        self.surfaces[index].buffer = Some(buffer);
+        self.surfaces[index].width = width;
+        self.surfaces[index].height = height;
+        let _ = self.render_surface(index);
     }
 }
 
