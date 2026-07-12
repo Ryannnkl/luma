@@ -28,6 +28,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Command::Check) => check_wayland(),
+        Ok(Command::Outputs) => list_outputs(),
         Ok(Command::Help) => {
             println!("{}", cli::help());
             ExitCode::SUCCESS
@@ -79,4 +80,39 @@ fn print_version(name: &str, version: Option<u32>) {
         Some(version) => println!("{name}: v{version}"),
         None => println!("{name}: unavailable"),
     }
+}
+
+fn list_outputs() -> ExitCode {
+    let tracker = match wayland::OutputTracker::connect() {
+        Ok(tracker) => tracker,
+        Err(error) => {
+            eprintln!("luma: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if tracker.snapshots().is_empty() {
+        eprintln!("luma: no Wayland outputs were reported");
+        return ExitCode::FAILURE;
+    }
+
+    println!("Wayland outputs: {}", tracker.snapshots().len());
+    for output in tracker.snapshots() {
+        let name = output.name.as_deref().unwrap_or("unnamed");
+        print!("- {} (global {})", name, output.global_id);
+        if let Some((width, height)) = output.logical_size {
+            print!(" {width}x{height}");
+        }
+        print!(
+            " scale {} transform {}",
+            output.scale_factor, output.transform
+        );
+        if let Some(mode) = &output.current_mode {
+            let refresh_rate = f64::from(mode.refresh_rate_millihertz) / 1000.0;
+            print!(" mode {}x{} @ {refresh_rate} Hz", mode.width, mode.height);
+        }
+        println!();
+    }
+
+    ExitCode::SUCCESS
 }
