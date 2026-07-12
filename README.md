@@ -72,6 +72,15 @@ The command reports `ext_session_lock_manager_v1`, compositor and shared-memory
 versions, plus the number of outputs and seats. It exits unsuccessfully when the
 minimum opaque lock-surface foundation is unavailable.
 
+List current output metadata without locking:
+
+```sh
+cargo run -- --outputs
+```
+
+This reports each output's name, logical size, scale, transform, and current
+mode. The same tracker will be used when Luma creates one lock surface per output.
+
 ## Development checks
 
 ```sh
