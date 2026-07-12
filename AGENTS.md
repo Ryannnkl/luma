@@ -3,7 +3,8 @@
 ## Project purpose
 
 Luma is a secure, customizable Wayland session locker written in Rust. Its first
-target is Sway and other compositors implementing `ext-session-lock-v1`.
+target is niri. Support for other compositors must be based on standard Wayland
+protocols, beginning with `ext-session-lock-v1`.
 
 ## Safety invariants
 

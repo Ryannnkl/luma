@@ -42,7 +42,7 @@ an isolated environment.
 ## Phase 6: resilience and integration
 
 - Test process failures, output hotplug, suspend/resume, scaling, and GPU loss.
-- Add Sway keybinding and wlogout integration documentation.
+- Add niri keybinding and wlogout integration documentation.
 - Add manual TTY recovery documentation.
 - Package Luma for Fedora and prepare a COPR-compatible build.
 
