@@ -1,10 +1,11 @@
-use std::{ffi::CString, fmt};
+use std::{ffi::CString, fmt, fs::File, path::Path};
 
 use pam_client2::{Context, ConversationHandler, ErrorCode, Flag};
 
 use crate::input::PasswordAttempt;
 
 const PAM_SERVICE: &str = "luma";
+const PAM_SERVICE_PATH: &str = "/etc/pam.d/luma";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AuthenticationResult {
@@ -15,6 +16,7 @@ pub enum AuthenticationResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AuthenticationError {
     CurrentUserUnavailable,
+    PamServiceUnavailable,
     Pam(ErrorCode),
 }
 
@@ -24,12 +26,26 @@ impl fmt::Display for AuthenticationError {
             Self::CurrentUserUnavailable => {
                 formatter.write_str("could not resolve the current user")
             }
+            Self::PamServiceUnavailable => {
+                formatter.write_str("the Luma PAM service is not installed or readable")
+            }
             Self::Pam(_) => formatter.write_str("PAM authentication could not be completed"),
         }
     }
 }
 
 impl std::error::Error for AuthenticationError {}
+
+/// Verifies that the PAM policy required for unlocking is available.
+///
+/// This check must run before requesting a session lock so a missing policy cannot trap the user.
+///
+/// # Errors
+///
+/// Returns an error if `/etc/pam.d/luma` is missing, not a regular file, or unreadable.
+pub fn validate_service() -> Result<(), AuthenticationError> {
+    validate_service_path(Path::new(PAM_SERVICE_PATH))
+}
 
 /// Authenticates the process owner through Luma's PAM policy.
 ///
@@ -70,6 +86,18 @@ fn current_username() -> Result<String, AuthenticationError> {
         .to_str()
         .map(str::to_owned)
         .ok_or(AuthenticationError::CurrentUserUnavailable)
+}
+
+fn validate_service_path(path: &Path) -> Result<(), AuthenticationError> {
+    let metadata = path
+        .metadata()
+        .map_err(|_| AuthenticationError::PamServiceUnavailable)?;
+    if !metadata.is_file() {
+        return Err(AuthenticationError::PamServiceUnavailable);
+    }
+    File::open(path)
+        .map(|_| ())
+        .map_err(|_| AuthenticationError::PamServiceUnavailable)
 }
 
 fn classify_pam_error(code: ErrorCode) -> Result<AuthenticationResult, AuthenticationError> {
@@ -128,7 +156,7 @@ mod tests {
 
     use super::{
         AuthenticationError, AuthenticationResult, PasswordConversation, classify_pam_error,
-        current_username,
+        current_username, validate_service_path,
     };
     use crate::input::InputState;
 
@@ -184,6 +212,16 @@ mod tests {
             !current_username()
                 .expect("current user should exist")
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn rejects_a_missing_pam_policy_before_locking() {
+        assert_eq!(
+            validate_service_path(std::path::Path::new(
+                "/path-that-must-not-exist/luma-pam-policy"
+            )),
+            Err(AuthenticationError::PamServiceUnavailable)
         );
     }
 }
