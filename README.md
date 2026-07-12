@@ -69,7 +69,8 @@ cargo test
 ```
 
 See [ROADMAP.md](ROADMAP.md) for the staged implementation plan and
-[AGENTS.md](AGENTS.md) for security invariants and contribution rules.
+[AGENTS.md](AGENTS.md) for security invariants and contribution rules. Real lock
+work must follow the isolated procedure in [docs/TESTING.md](docs/TESTING.md).
 
 ## Security status
 

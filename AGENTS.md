@@ -22,6 +22,8 @@ protocols, beginning with `ext-session-lock-v1`.
   real user or acquire `ext-session-lock-v1`.
 - Test real locking in a nested compositor or virtual machine before testing it in
   the primary desktop session.
+- Follow `docs/TESTING.md` for nested niri setup, watchdog recovery, and the
+  real-session test gate.
 - Keep swaylock installed and configured as a recovery option until Luma has been
   exercised successfully in production-like tests.
 
