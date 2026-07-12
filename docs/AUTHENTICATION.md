@@ -26,6 +26,17 @@ authenticated, denied, or infrastructure failure. Incorrect passwords, unknown
 users, and similar credential failures are intentionally indistinguishable to
 the interface. PAM prompts and messages are not logged or retained.
 
-The bounded `--lock-smoke` command remains disconnected from PAM. Do not enter a
-real password into it; authentication will be connected only to a real lock path
-without the smoke timer bypass.
+The authenticated path is started with:
+
+```sh
+luma --lock
+```
+
+Luma checks that `/etc/pam.d/luma` is installed and readable before requesting
+the Wayland session lock. Enter transfers the zeroizing password attempt to PAM.
+Only an authenticated result authorizes `unlock_and_destroy`; denial or PAM
+infrastructure failure leaves the session locked.
+
+The bounded `--lock-smoke` command remains disconnected from PAM and exists only
+in debug builds. Release builds do not contain its command, timer, or environment
+variable gate.

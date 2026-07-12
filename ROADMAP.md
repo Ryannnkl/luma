@@ -31,6 +31,7 @@ an isolated environment.
 - [x] Redraw a password-length indicator without rendering password contents.
 - [x] Add a minimal PAM service and a narrow Rust authentication boundary.
 - [x] Store password input in zeroizing memory and exclude secrets from diagnostics.
+- [x] Unlock only after PAM succeeds, without a timer bypass in release builds.
 - Add retry throttling, cancellation, and generic failure messages.
 - Keep rendering and input responsive while PAM performs authentication.
 

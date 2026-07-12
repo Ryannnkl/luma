@@ -102,8 +102,9 @@ Luma must not request `ext-session-lock-v1` until all of these are true:
 - the outer-session service exit and watchdog have both been verified;
 - no development bypass is present in the production binary.
 
-The normal `luma` binary will not gain a password bypass. The current smoke
-command is explicitly guarded and is not a production lock mode.
+The normal release binary has no password bypass. The smoke command is compiled
+only with `debug_assertions`, is explicitly guarded, and is not a production
+lock mode.
 
 The current smoke client is guarded by an environment variable and unlocks after
 five seconds. Run it only from the outer session with the nested compositor as
@@ -130,8 +131,45 @@ production keybinding.
 
 The smoke client renders a bottom password-length indicator and clears it on
 focus or seat loss. It never renders password contents and intentionally does
-not authorize unlocks. The PAM boundary is implemented separately and will be
-connected only to a real lock path without the smoke timer bypass.
+not authorize unlocks. The separate `--lock` path uses the same input renderer
+but authorizes unlock only through PAM and has no timer bypass.
+
+## Authenticated nested lock test
+
+Build the release binary and verify that the PAM policy is installed:
+
+```sh
+cargo build --release
+sudo install -Dm644 pam/luma /etc/pam.d/luma
+```
+
+Create a 45-second watchdog, then start release Luma inside nested niri:
+
+```sh
+systemd-run --user --unit=luma-auth-watchdog --on-active=45s \
+  systemctl --user stop luma-auth-lock.service
+systemd-run --user --unit=luma-auth-lock --collect \
+  niri -- /absolute/path/to/target/release/luma --lock
+```
+
+Type the normal user password inside the nested lock and press Enter. An
+incorrect password must leave it locked; a correct password must unlock only the
+nested niri window. Stop the nested compositor and watchdog after success:
+
+```sh
+systemctl --user stop luma-auth-lock.service
+systemctl --user stop luma-auth-watchdog.timer
+```
+
+Confirm that release builds reject the smoke command:
+
+```sh
+target/release/luma --lock-smoke
+```
+
+Do not use `--lock` in the primary compositor or change the normal keybinding at
+this milestone. Authentication feedback, retry throttling, and non-blocking PAM
+execution are not implemented yet.
 
 ## Eventual real-session test
 
