@@ -130,7 +130,8 @@ production keybinding.
 
 The smoke client renders a bottom password-length indicator and clears it on
 focus or seat loss. It never renders password contents and intentionally does
-not authorize unlocks; PAM integration remains a later step.
+not authorize unlocks. The PAM boundary is implemented separately and will be
+connected only to a real lock path without the smoke timer bypass.
 
 ## Eventual real-session test
 

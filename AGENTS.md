@@ -12,6 +12,8 @@ protocols, beginning with `ext-session-lock-v1`.
 - Production builds must never include a password bypass, secret unlock key, or
   crash-to-unlock behavior.
 - Unlock only after successful authentication through PAM.
+- Keep the PAM policy at `pam/luma`, authenticate only, and do not open a new PAM
+  session or run login account-management rules while unlocking.
 - Never log, persist, clone unnecessarily, or expose password contents.
 - Clear sensitive input from memory immediately after each authentication attempt.
 - Prepare fallbacks before requesting a session lock. A rendering failure must

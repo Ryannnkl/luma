@@ -1,0 +1,4 @@
+#%PAM-1.0
+
+# Authenticate an already-running desktop session with the system login stack.
+auth include login
