@@ -2,10 +2,15 @@ use std::{fmt, thread, time::Duration};
 
 use smithay_client_toolkit::error::GlobalError as SctkGlobalError;
 use smithay_client_toolkit::{
-    delegate_output, delegate_registry, delegate_session_lock, delegate_shm,
+    delegate_keyboard, delegate_output, delegate_registry, delegate_seat, delegate_session_lock,
+    delegate_shm,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
+    seat::{
+        Capability, SeatHandler, SeatState,
+        keyboard::{KeyEvent, KeyboardHandler, Keysym},
+    },
     session_lock::{
         SessionLock, SessionLockHandler, SessionLockState, SessionLockSurface,
         SessionLockSurfaceConfigure,
@@ -20,6 +25,8 @@ use wayland_client::{
     globals::{GlobalList, registry_queue_init},
     protocol::{wl_compositor, wl_output, wl_shm, wl_surface},
 };
+
+use crate::input::InputState;
 
 /// Runs a deliberately bounded opaque lock smoke test.
 ///
@@ -92,6 +99,9 @@ impl std::error::Error for SmokeError {}
 struct SmokeState {
     registry_state: RegistryState,
     output_state: OutputState,
+    seat_state: SeatState,
+    keyboard: Option<wayland_client::protocol::wl_keyboard::WlKeyboard>,
+    input: InputState,
     shm_state: Shm,
     pool: SlotPool,
     compositor: wl_compositor::WlCompositor,
@@ -119,6 +129,9 @@ impl SmokeState {
         Ok(Self {
             registry_state: RegistryState::new(globals),
             output_state: OutputState::new(globals, qh),
+            seat_state: SeatState::new(globals, qh),
+            keyboard: None,
+            input: InputState::new(64),
             shm_state,
             pool,
             compositor,
@@ -135,7 +148,7 @@ impl ProvidesRegistryState for SmokeState {
         &mut self.registry_state
     }
 
-    registry_handlers!(OutputState);
+    registry_handlers!(OutputState, SeatState);
 }
 
 impl OutputHandler for SmokeState {
@@ -174,6 +187,141 @@ impl ShmHandler for SmokeState {
     }
 }
 
+impl SeatHandler for SmokeState {
+    fn seat_state(&mut self) -> &mut SeatState {
+        &mut self.seat_state
+    }
+
+    fn new_seat(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _seat: wayland_client::protocol::wl_seat::WlSeat,
+    ) {
+    }
+
+    fn new_capability(
+        &mut self,
+        _connection: &Connection,
+        queue_handle: &QueueHandle<Self>,
+        seat: wayland_client::protocol::wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Keyboard && self.keyboard.is_none() {
+            self.keyboard = self
+                .seat_state
+                .get_keyboard::<Self, Self>(queue_handle, &seat, None)
+                .ok();
+        }
+    }
+
+    fn remove_capability(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _seat: wayland_client::protocol::wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Keyboard {
+            self.keyboard = None;
+            self.input.clear();
+        }
+    }
+
+    fn remove_seat(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _seat: wayland_client::protocol::wl_seat::WlSeat,
+    ) {
+        self.keyboard = None;
+        self.input.clear();
+    }
+}
+
+impl KeyboardHandler for SmokeState {
+    fn enter(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
+        _surface: &wl_surface::WlSurface,
+        _serial: u32,
+        _raw: &[u32],
+        _keysyms: &[Keysym],
+    ) {
+    }
+
+    fn leave(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
+        _surface: &wl_surface::WlSurface,
+        _serial: u32,
+    ) {
+        self.input.clear();
+    }
+
+    fn press_key(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
+        _serial: u32,
+        event: KeyEvent,
+    ) {
+        self.handle_key(event);
+    }
+
+    fn repeat_key(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
+        _serial: u32,
+        event: KeyEvent,
+    ) {
+        self.handle_key(event);
+    }
+
+    fn release_key(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _event: KeyEvent,
+    ) {
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+        _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
+        _raw_modifiers: smithay_client_toolkit::seat::keyboard::RawModifiers,
+        _layout: u32,
+    ) {
+    }
+}
+
+impl SmokeState {
+    fn handle_key(&mut self, event: KeyEvent) {
+        match event.keysym {
+            Keysym::BackSpace => self.input.backspace(),
+            Keysym::Return => drop(self.input.submit()),
+            _ => {
+                if let Some(text) = event.utf8 {
+                    self.input.push_text(&text);
+                }
+            }
+        }
+    }
+}
+
 impl SessionLockHandler for SmokeState {
     fn locked(
         &mut self,
@@ -200,6 +348,7 @@ impl SessionLockHandler for SmokeState {
     ) {
         self.finished = true;
         self.session_lock = None;
+        self.input.clear();
     }
 
     fn configure(
@@ -246,6 +395,8 @@ impl SessionLockHandler for SmokeState {
 
 delegate_registry!(SmokeState);
 delegate_output!(SmokeState);
+delegate_seat!(SmokeState);
+delegate_keyboard!(SmokeState);
 delegate_session_lock!(SmokeState);
 delegate_shm!(SmokeState);
 delegate_noop!(SmokeState: ignore wl_compositor::WlCompositor);
