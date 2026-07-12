@@ -28,6 +28,7 @@ an isolated environment.
 ## Phase 4: authentication
 
 - [x] Build a zeroizing password-input state and receive Wayland keyboard text.
+- [x] Redraw a password-length indicator without rendering password contents.
 - Add a minimal PAM service and a narrow Rust authentication boundary.
 - Store password input in zeroizing memory and exclude secrets from diagnostics.
 - Add retry throttling, cancellation, and generic failure messages.

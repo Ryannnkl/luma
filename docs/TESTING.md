@@ -128,9 +128,9 @@ systemctl --user stop luma-smoke-watchdog.timer
 This smoke path does not authenticate a password and must never be used as the
 production keybinding.
 
-The smoke client now receives keyboard text and clears it on focus or seat loss,
-but it intentionally does not render password dots or authorize unlocks. Those
-behaviors arrive with the lock renderer and PAM integration.
+The smoke client renders a bottom password-length indicator and clears it on
+focus or seat loss. It never renders password contents and intentionally does
+not authorize unlocks; PAM integration remains a later step.
 
 ## Eventual real-session test
 
