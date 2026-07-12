@@ -1,0 +1,86 @@
+# Copy this file to ~/.config/luma/config.toml.
+# Positions use normalized screen coordinates: 0.0 is left/top and 1.0 is right/bottom.
+# Colors accept #RRGGBB or #RRGGBBAA.
+
+[window]
+width = 1280.0
+height = 720.0
+maximized = true
+
+[background]
+base_color = "#183434"
+dim_color = "#00000052"
+
+[[background.spots]]
+x = 0.18
+y = 0.24
+falloff = 8.0
+strength = 0.55
+color = "#4a745f"
+
+[[background.spots]]
+x = 0.76
+y = 0.18
+falloff = 7.0
+strength = 0.48
+color = "#265b69"
+
+[[background.spots]]
+x = 0.69
+y = 0.60
+falloff = 12.0
+strength = 0.48
+color = "#916b3a"
+
+[clock]
+enabled = true
+x = 0.50
+y = 0.46
+size_ratio = 0.22
+min_size = 96.0
+max_size = 184.0
+line_gap_ratio = 0.68
+hour_offset_x_ratio = -0.10
+minute_offset_x_ratio = 0.16
+hour_format = "%H"
+minute_format = "%M"
+hour_color = "#93e6be"
+minute_color = "#f6f8f7"
+
+[date]
+enabled = false
+x = 0.50
+y = 0.72
+format = "%A, %d %B"
+size = 22.0
+color = "#f6f8f7dc"
+
+[input]
+enabled = true
+x = 0.50
+y = 0.925
+width = 156.0
+height = 34.0
+max_characters = 12
+min_dots = 6
+dot_spacing = 10.0
+empty_dot_radius = 2.1
+filled_dot_radius = 2.7
+background_color = "#0000009b"
+empty_dot_color = "#ffffff3e"
+filled_dot_color = "#ecf4f0"
+feedback_background_color = "#265c48d2"
+feedback_text_color = "#bef4d8"
+feedback_text = "DEMO ONLY"
+feedback_duration_ms = 2000
+
+[demo_label]
+enabled = true
+text = "DEMO  ·  ESC TO CLOSE"
+x = 0.085
+y = 0.057
+width = 174.0
+height = 34.0
+text_size = 12.0
+background_color = "#00000070"
+text_color = "#ffffffd2"

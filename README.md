@@ -27,6 +27,39 @@ cargo run -- --demo
 Use `Backspace` to remove input, `Enter` to preview feedback, and `Escape` to
 close the window. Do not type a real password into development builds.
 
+## Configuration
+
+Luma reads `~/.config/luma/config.toml` when it exists. Missing sections and
+fields use built-in defaults, while unknown fields and invalid values produce a
+clear startup error.
+
+Start from the complete example:
+
+```sh
+mkdir -p ~/.config/luma
+cp config.example.toml ~/.config/luma/config.toml
+cargo run -- --demo
+```
+
+To test another file without changing the user configuration:
+
+```sh
+cargo run -- --demo --config ./my-theme.toml
+```
+
+The configuration controls:
+
+- window size and maximized state;
+- procedural background colors, dimming, and color spots;
+- clock visibility, normalized position, size, two-line offsets, formats, and colors;
+- optional date visibility, format, position, size, and color;
+- input visibility, position, dimensions, dot behavior, feedback, and colors;
+- demo-label visibility, content, position, dimensions, and colors.
+
+Positions use normalized coordinates from `0.0` to `1.0`. Time and date formats
+use Chrono/strftime directives: `%H` is a 24-hour value, `%I` is a 12-hour value,
+`%M` is minutes, and `%p` is AM/PM. Colors accept `#RRGGBB` or `#RRGGBBAA`.
+
 ## Development checks
 
 ```sh
