@@ -9,9 +9,11 @@ license = "MIT"
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 eframe = { version = "0.35.0", default-features = false, features = ["accesskit", "default_fonts", "wayland", "wgpu", "x11"] }
+pam-client2 = { version = "0.5.5", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }
 smithay-client-toolkit = "0.20.0"
 toml = "1.1.2"
+uzers = { version = "0.12.2", default-features = false }
 wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 zeroize = "1.9.0"

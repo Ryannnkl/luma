@@ -421,6 +421,9 @@ name = "bitflags"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "block2"
@@ -1775,9 +1778,11 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "eframe",
+ "pam-client2",
  "serde",
  "smithay-client-toolkit 0.20.0",
  "toml",
+ "uzers",
  "wayland-client",
  "wayland-protocols",
  "zeroize",
@@ -2263,6 +2268,27 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "pam-client2"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "407daa00f98b05147dbbaa6d2f6bce574e76794fa4952a5b38764681a23dde5f"
+dependencies = [
+ "bitflags 2.13.0",
+ "libc",
+ "pam-sys2",
+ "rustversion",
+]
+
+[[package]]
+name = "pam-sys2"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63e07ea89c210813e1a48fc32cb358ba693aae8ca70163461e22d11f1884bf1d"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -3179,6 +3205,15 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "uzers"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b8275fb1afee25b4111d2dc8b5c505dbbc4afd0b990cb96deb2d88bff8be18d"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
