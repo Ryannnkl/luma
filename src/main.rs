@@ -8,8 +8,10 @@ use cli::Command;
 
 fn main() -> ExitCode {
     match cli::parse(env::args().skip(1)) {
-        Ok(Command::Demo) => {
-            let config = match config::Config::load(None) {
+        Ok(Command::Demo {
+            config: config_path,
+        }) => {
+            let config = match config::Config::load(config_path.as_deref()) {
                 Ok(config) => config,
                 Err(error) => {
                     eprintln!("luma: {error}");

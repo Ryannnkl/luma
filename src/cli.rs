@@ -1,26 +1,22 @@
-use std::fmt;
+use std::{fmt, path::PathBuf};
 
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma [OPTIONS]\n\nOptions:\n  --demo     Start the harmless visual demo\n  -h, --help Show this help\n  -V, --version Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --demo         Start the harmless visual demo\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
-    Demo,
+    Demo { config: Option<PathBuf> },
     Help,
     Version,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct ParseError {
-    argument: String,
+    message: String,
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "unknown argument `{}`; run `luma --help` for usage",
-            self.argument
-        )
+        write!(formatter, "{}; run `luma --help` for usage", self.message)
     }
 }
 
@@ -33,18 +29,55 @@ where
         return Ok(Command::Help);
     };
 
+    if argument == "--demo" {
+        return parse_demo_options(arguments);
+    }
+
     let command = match argument.as_str() {
-        "--demo" => Command::Demo,
         "-h" | "--help" => Command::Help,
         "-V" | "--version" => Command::Version,
-        _ => return Err(ParseError { argument }),
+        _ => return Err(ParseError::unknown(&argument)),
     };
 
     if let Some(argument) = arguments.next() {
-        return Err(ParseError { argument });
+        return Err(ParseError::unknown(&argument));
     }
 
     Ok(command)
+}
+
+fn parse_demo_options<I>(mut arguments: I) -> Result<Command, ParseError>
+where
+    I: Iterator<Item = String>,
+{
+    let mut config = None;
+
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--config" if config.is_none() => {
+                let path = arguments.next().ok_or_else(|| ParseError {
+                    message: "missing path after `--config`".to_owned(),
+                })?;
+                config = Some(PathBuf::from(path));
+            }
+            "--config" => {
+                return Err(ParseError {
+                    message: "`--config` may only be provided once".to_owned(),
+                });
+            }
+            _ => return Err(ParseError::unknown(&argument)),
+        }
+    }
+
+    Ok(Command::Demo { config })
+}
+
+impl ParseError {
+    fn unknown(argument: &str) -> Self {
+        Self {
+            message: format!("unknown argument `{argument}`"),
+        }
+    }
 }
 
 pub const fn help() -> &'static str {
@@ -62,7 +95,24 @@ mod tests {
 
     #[test]
     fn recognizes_demo_mode() {
-        assert_eq!(parse(["--demo".to_owned()]), Ok(Command::Demo));
+        assert_eq!(
+            parse(["--demo".to_owned()]),
+            Ok(Command::Demo { config: None })
+        );
+    }
+
+    #[test]
+    fn accepts_custom_config_path() {
+        assert_eq!(
+            parse([
+                "--demo".to_owned(),
+                "--config".to_owned(),
+                "/tmp/luma.toml".to_owned(),
+            ]),
+            Ok(Command::Demo {
+                config: Some("/tmp/luma.toml".into()),
+            })
+        );
     }
 
     #[test]
@@ -78,5 +128,13 @@ mod tests {
             .expect_err("demo mode accepts no trailing arguments");
 
         assert!(error.to_string().contains("unknown argument `extra`"));
+    }
+
+    #[test]
+    fn rejects_config_without_path() {
+        let error = parse(["--demo".to_owned(), "--config".to_owned()])
+            .expect_err("config requires a path");
+
+        assert!(error.to_string().contains("missing path after `--config`"));
     }
 }
