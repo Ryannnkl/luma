@@ -1,6 +1,7 @@
 mod cli;
 pub mod config;
 mod demo;
+pub mod wayland;
 
 use std::{env, process::ExitCode};
 
