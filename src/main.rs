@@ -3,7 +3,7 @@ pub mod config;
 mod demo;
 pub mod wayland;
 
-use std::{env, process::ExitCode};
+use std::{env, process::ExitCode, time::Duration};
 
 use cli::Command;
 
@@ -29,6 +29,7 @@ fn main() -> ExitCode {
         }
         Ok(Command::Check) => check_wayland(),
         Ok(Command::Outputs) => list_outputs(),
+        Ok(Command::LockSmoke) => run_lock_smoke(),
         Ok(Command::Help) => {
             println!("{}", cli::help());
             ExitCode::SUCCESS
@@ -115,4 +116,21 @@ fn list_outputs() -> ExitCode {
     }
 
     ExitCode::SUCCESS
+}
+
+fn run_lock_smoke() -> ExitCode {
+    if env::var("LUMA_ALLOW_LOCK_SMOKE").as_deref() != Ok("1") {
+        eprintln!(
+            "luma: refusing --lock-smoke; set LUMA_ALLOW_LOCK_SMOKE=1 only inside nested niri"
+        );
+        return ExitCode::FAILURE;
+    }
+
+    match wayland::run_lock_smoke(Duration::from_secs(5)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("luma: lock smoke test failed: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }

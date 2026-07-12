@@ -1,12 +1,13 @@
 use std::{fmt, path::PathBuf};
 
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
     Demo { config: Option<PathBuf> },
     Check,
     Outputs,
+    LockSmoke,
     Help,
     Version,
 }
@@ -38,6 +39,7 @@ where
     let command = match argument.as_str() {
         "--check" => Command::Check,
         "--outputs" => Command::Outputs,
+        "--lock-smoke" => Command::LockSmoke,
         "-h" | "--help" => Command::Help,
         "-V" | "--version" => Command::Version,
         _ => return Err(ParseError::unknown(&argument)),
@@ -113,6 +115,11 @@ mod tests {
     #[test]
     fn recognizes_output_listing() {
         assert_eq!(parse(["--outputs".to_owned()]), Ok(Command::Outputs));
+    }
+
+    #[test]
+    fn recognizes_lock_smoke() {
+        assert_eq!(parse(["--lock-smoke".to_owned()]), Ok(Command::LockSmoke));
     }
 
     #[test]
