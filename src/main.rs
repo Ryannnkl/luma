@@ -1,4 +1,5 @@
 mod cli;
+mod demo;
 
 use std::{env, process::ExitCode};
 
@@ -7,7 +8,11 @@ use cli::Command;
 fn main() -> ExitCode {
     match cli::parse(env::args().skip(1)) {
         Ok(Command::Demo) => {
-            println!("Luma demo mode is not rendered yet; session locking is disabled.");
+            if let Err(error) = demo::run() {
+                eprintln!("luma: could not start demo: {error}");
+                return ExitCode::FAILURE;
+            }
+
             ExitCode::SUCCESS
         }
         Ok(Command::Help) => {
