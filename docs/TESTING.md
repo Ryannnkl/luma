@@ -102,8 +102,31 @@ Luma must not request `ext-session-lock-v1` until all of these are true:
 - the outer-session service exit and watchdog have both been verified;
 - no development bypass is present in the production binary.
 
-The first Luma protocol smoke test will use a separate development-only target.
-The normal `luma` binary will not gain a password bypass.
+The normal `luma` binary will not gain a password bypass. The current smoke
+command is explicitly guarded and is not a production lock mode.
+
+The current smoke client is guarded by an environment variable and unlocks after
+five seconds. Run it only from the outer session with the nested compositor as
+its parent:
+
+```sh
+systemd-run --user --unit=luma-smoke-watchdog --on-active=30s \
+  systemctl --user stop luma-lock-smoke.service
+systemd-run --user --unit=luma-lock-smoke --collect \
+  niri -- env LUMA_ALLOW_LOCK_SMOKE=1 \
+  /absolute/path/to/luma --lock-smoke
+```
+
+The nested niri window will be covered by Luma's opaque surface, then unlock
+automatically after five seconds. Stop the named service after the test:
+
+```sh
+systemctl --user stop luma-lock-smoke.service
+systemctl --user stop luma-smoke-watchdog.timer
+```
+
+This smoke path does not authenticate a password and must never be used as the
+production keybinding.
 
 ## Eventual real-session test
 

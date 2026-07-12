@@ -21,9 +21,9 @@ an isolated environment.
 
 - [x] Connect to Wayland and discover `ext-session-lock-v1` support.
 - [x] Track all outputs and their configure, scale, and transform events.
-- [ ] Render an opaque fallback on every lock surface.
-- [ ] Model and test the lock lifecycle as explicit state transitions.
-- [ ] Exercise the implementation only in a nested compositor or virtual machine.
+- [x] Render an opaque fallback on every lock surface.
+- [x] Model and test the lock lifecycle as explicit state transitions.
+- [x] Exercise the implementation only in a nested compositor or virtual machine.
 
 ## Phase 4: authentication
 
