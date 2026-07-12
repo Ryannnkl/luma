@@ -40,11 +40,11 @@ use crate::{input::InputState, wayland::opaque::draw_lock_frame};
 pub fn run(timeout: Duration) -> Result<(), LockError> {
     let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
     let (globals, event_queue) =
-        registry_queue_init::<SmokeState>(&connection).map_err(LockError::Registry)?;
+        registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
-    let mut state = SmokeState::new(&globals, &qh)?;
+    let mut state = LockState::new(&globals, &qh)?;
     let lock = state
-        .session_lock_state
+        .lock_manager
         .lock(&qh)
         .map_err(|error: SctkGlobalError| LockError::Lock(error.to_string()))?;
     let timer_lock = lock.clone();
@@ -96,7 +96,7 @@ impl fmt::Display for LockError {
 
 impl std::error::Error for LockError {}
 
-struct SmokeState {
+struct LockState {
     registry_state: RegistryState,
     output_state: OutputState,
     seat_state: SeatState,
@@ -105,7 +105,7 @@ struct SmokeState {
     shm_state: Shm,
     pool: SlotPool,
     compositor: wl_compositor::WlCompositor,
-    session_lock_state: SessionLockState,
+    lock_manager: SessionLockState,
     session_lock: Option<SessionLock>,
     surfaces: Vec<LockSurfaceState>,
     finished: bool,
@@ -119,7 +119,7 @@ struct LockSurfaceState {
     height: i32,
 }
 
-impl SmokeState {
+impl LockState {
     fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, LockError> {
         let compositor = globals
             .bind(qh, 1..=6, ())
@@ -138,7 +138,7 @@ impl SmokeState {
             shm_state,
             pool,
             compositor,
-            session_lock_state: SessionLockState::new(globals, qh),
+            lock_manager: SessionLockState::new(globals, qh),
             session_lock: None,
             surfaces: Vec::new(),
             finished: false,
@@ -146,7 +146,7 @@ impl SmokeState {
     }
 }
 
-impl ProvidesRegistryState for SmokeState {
+impl ProvidesRegistryState for LockState {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
@@ -154,7 +154,7 @@ impl ProvidesRegistryState for SmokeState {
     registry_handlers!(OutputState, SeatState);
 }
 
-impl OutputHandler for SmokeState {
+impl OutputHandler for LockState {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
@@ -187,13 +187,13 @@ impl OutputHandler for SmokeState {
     }
 }
 
-impl ShmHandler for SmokeState {
+impl ShmHandler for LockState {
     fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm_state
     }
 }
 
-impl SeatHandler for SmokeState {
+impl SeatHandler for LockState {
     fn seat_state(&mut self) -> &mut SeatState {
         &mut self.seat_state
     }
@@ -247,7 +247,7 @@ impl SeatHandler for SmokeState {
     }
 }
 
-impl KeyboardHandler for SmokeState {
+impl KeyboardHandler for LockState {
     fn enter(
         &mut self,
         _connection: &Connection,
@@ -317,7 +317,7 @@ impl KeyboardHandler for SmokeState {
     }
 }
 
-impl SmokeState {
+impl LockState {
     fn add_output_surface(
         &mut self,
         queue_handle: &QueueHandle<Self>,
@@ -396,7 +396,7 @@ impl SmokeState {
     }
 }
 
-impl SessionLockHandler for SmokeState {
+impl SessionLockHandler for LockState {
     fn locked(
         &mut self,
         _connection: &Connection,
@@ -446,14 +446,14 @@ impl SessionLockHandler for SmokeState {
     }
 }
 
-delegate_registry!(SmokeState);
-delegate_output!(SmokeState);
-delegate_seat!(SmokeState);
-delegate_keyboard!(SmokeState);
-delegate_session_lock!(SmokeState);
-delegate_shm!(SmokeState);
-delegate_noop!(SmokeState: ignore wl_compositor::WlCompositor);
-delegate_noop!(SmokeState: ignore wl_surface::WlSurface);
+delegate_registry!(LockState);
+delegate_output!(LockState);
+delegate_seat!(LockState);
+delegate_keyboard!(LockState);
+delegate_session_lock!(LockState);
+delegate_shm!(LockState);
+delegate_noop!(LockState: ignore wl_compositor::WlCompositor);
+delegate_noop!(LockState: ignore wl_surface::WlSurface);
 
 #[cfg(test)]
 mod tests {
