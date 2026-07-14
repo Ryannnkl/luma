@@ -1776,6 +1776,8 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 name = "luma"
 version = "0.1.0"
 dependencies = [
+ "calloop 0.14.4",
+ "calloop-wayland-source 0.4.1",
  "chrono",
  "eframe",
  "pam-client2",
