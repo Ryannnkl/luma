@@ -34,7 +34,8 @@ implementation) follows this sequence:
 7. Continue dispatching Wayland while PAM runs. The worker sends only the token
    and a generic result through a `calloop` channel that wakes the event loop.
 8. Apply the result to `AuthenticationState`. Denial and infrastructure failure
-   keep the lock active and enforce the progressive bounded cooldown.
+   render the same generic warning, keep the lock active, and enforce the
+   progressive bounded cooldown.
 9. Call `unlock_and_destroy` only when the active attempt returns
    `UnlockAuthorized`.
 
@@ -59,6 +60,10 @@ an authentication error as an unlock authorization.
 - The production path contains no timer, environment-variable unlock gate, or
   secret bypass. The smoke timer is removed from release builds with
   `debug_assertions`.
+- `src/wayland/opaque.rs` maps authentication phases to four opaque prompt states:
+  ready password dots, three-dot authenticating feedback, one generic failure
+  marker, and an attenuated cooldown indicator. Failure frames do not encode the
+  previous password length.
 
 ## Authentication state contract
 
@@ -86,9 +91,9 @@ worker completion channel wakes the loop immediately when PAM finishes.
 
 These are known follow-up tasks, not reasons to bypass the safety rules:
 
-- Authentication failures enforce cooldown but do not have visible text or color
-  feedback yet. During authentication and cooldown, additional keyboard input is
-  ignored.
+- Authentication feedback currently uses fixed fallback colors and symbols.
+  Configurable colors, text, animation, and renderer-backed typography are not
+  connected to the real lock yet.
 - A PAM transaction has no cancellation timeout yet. A PAM backend that never
   returns leaves the attempt authenticating, although Wayland rendering and
   output handling continue to run.
@@ -108,4 +113,4 @@ The earlier synchronous authenticated path was exercised in a nested niri with a
 watchdog, where a correct password unlocked only the nested compositor. The new
 worker-driven path still requires the same nested test before primary-session
 use. The release binary builds without the smoke command, and the current suite
-passes `55` tests with `cargo fmt`, Clippy, and Cargo tests.
+passes `59` tests with `cargo fmt`, Clippy, and Cargo tests.

@@ -38,7 +38,7 @@ until the release gate is satisfied.
   cooldown as explicit state transitions.
 - [x] Connect the authentication state and its cooldown to the lock event loop.
 - [x] Keep rendering and input responsive while PAM performs authentication.
-- Render generic authentication failure feedback on every lock surface.
+- [x] Render generic authentication failure feedback on every lock surface.
 
 ## Phase 5: visual design
 

@@ -23,6 +23,9 @@ protocols, beginning with `ext-session-lock-v1`.
 - Run PAM outside the Wayland event loop. Authentication completions must wake the
   event loop through its registered channel; never poll secrets or block rendering
   while PAM is running.
+- Render credential denial and authentication infrastructure failure with the
+  same generic feedback. Feedback frames must not reveal password contents,
+  password length, usernames, PAM messages, or the failure category.
 - Validate critical resources before requesting a session lock. After the
   compositor's `locked` event, create an opaque fallback surface with a usable
   authentication prompt for every active output.
@@ -68,6 +71,10 @@ progressively bounded cooldown before input is accepted again.
 once, catches worker-side authentication panics as infrastructure failures, and
 returns only an attempt token plus a generic outcome. Keep the smoke path free of
 this worker and of all real authentication.
+
+The opaque fallback maps both `Denied` and `Error` to the same `PromptState::Failure`.
+It shows no password-length dots outside the ready state and remains fully opaque
+through authenticating, failure, and cooldown transitions.
 
 ## Development workflow
 

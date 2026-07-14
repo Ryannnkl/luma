@@ -42,7 +42,13 @@ concurrent attempts, ignores stale results, and enforces a progressive bounded
 cooldown after failures. PAM runs on the dedicated `luma-pam` thread; its generic
 completion wakes the Wayland event loop through a registered `calloop` channel.
 An authentication panic is contained as an infrastructure failure and does not
-authorize unlocking. Visible failure feedback is not implemented yet.
+authorize unlocking.
+
+While PAM runs, the prompt replaces password-length dots with a generic three-dot
+indicator. Credential denial and infrastructure failure both render the same
+warning marker, followed by an attenuated cooldown indicator. These feedback
+frames do not reveal the submitted password length or failure category. The
+fallback colors and symbols are fixed until real-lock configuration is connected.
 
 The bounded `--lock-smoke` command remains disconnected from PAM and exists only
 in debug builds. Release builds do not contain its command, timer, or environment
