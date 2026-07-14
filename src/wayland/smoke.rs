@@ -37,8 +37,8 @@ use wayland_client::{
 use crate::{
     auth::worker::{AuthenticationCompletion, AuthenticationWorker},
     input::InputState,
-    state::{AuthenticationOutcome, AuthenticationState, CompletionAction},
-    wayland::opaque::draw_lock_frame,
+    state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
+    wayland::opaque::{PromptState, draw_lock_frame},
 };
 
 /// Runs the authenticated Luma session locker without a timed bypass.
@@ -568,7 +568,18 @@ impl LockState {
             .pool
             .create_buffer(width, height, stride, wl_shm::Format::Argb8888)
             .map_err(|error| LockError::Buffer(error.to_string()))?;
-        draw_lock_frame(canvas, width, height, self.input.character_count());
+        let prompt_state = prompt_state_for_phase(
+            self.authentication
+                .as_ref()
+                .map(|authentication| authentication.state.phase()),
+        );
+        draw_lock_frame(
+            canvas,
+            width,
+            height,
+            self.input.character_count(),
+            prompt_state,
+        );
         buffer
             .attach_to(surface.wl_surface())
             .map_err(|error| LockError::Buffer(error.to_string()))?;
@@ -576,6 +587,17 @@ impl LockState {
         surface.wl_surface().commit();
         self.surfaces[index].buffer = Some(buffer);
         Ok(())
+    }
+}
+
+const fn prompt_state_for_phase(phase: Option<AuthenticationPhase>) -> PromptState {
+    match phase {
+        None | Some(AuthenticationPhase::Idle) => PromptState::Ready,
+        Some(AuthenticationPhase::Authenticating | AuthenticationPhase::Authenticated) => {
+            PromptState::Authenticating
+        }
+        Some(AuthenticationPhase::Denied | AuthenticationPhase::Error) => PromptState::Failure,
+        Some(AuthenticationPhase::Cooldown) => PromptState::Cooldown,
     }
 }
 
@@ -640,10 +662,31 @@ delegate_noop!(LockState: ignore wl_surface::WlSurface);
 
 #[cfg(test)]
 mod tests {
+    use crate::{state::AuthenticationPhase, wayland::opaque::PromptState};
+
+    use super::prompt_state_for_phase;
+
     #[test]
     #[cfg(debug_assertions)]
     fn smoke_timeout_is_explicitly_bounded_by_the_caller() {
         let timeout = std::time::Duration::from_secs(5);
         assert!(timeout <= std::time::Duration::from_secs(30));
+    }
+
+    #[test]
+    fn credential_denial_and_infrastructure_error_share_feedback() {
+        assert_eq!(
+            prompt_state_for_phase(Some(AuthenticationPhase::Denied)),
+            PromptState::Failure
+        );
+        assert_eq!(
+            prompt_state_for_phase(Some(AuthenticationPhase::Error)),
+            PromptState::Failure
+        );
+    }
+
+    #[test]
+    fn smoke_mode_keeps_the_neutral_prompt() {
+        assert_eq!(prompt_state_for_phase(None), PromptState::Ready);
     }
 }
