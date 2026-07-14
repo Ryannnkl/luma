@@ -154,7 +154,11 @@ systemd-run --user --unit=luma-auth-lock --collect \
 
 Type the normal user password inside the nested lock and press Enter. An
 incorrect password must leave it locked; a correct password must unlock only the
-nested niri window. Stop the nested compositor and watchdog after success:
+nested niri window. After an incorrect password, wait for the cooldown interval
+before entering the next attempt; input is intentionally ignored during that
+interval and visible failure feedback is not implemented yet. Confirm that output
+handling remains responsive while PAM is running. Stop the nested compositor and
+watchdog after success:
 
 ```sh
 systemctl --user stop luma-auth-lock.service
@@ -168,9 +172,10 @@ target/release/luma --lock-smoke
 ```
 
 Do not use `--lock` in the primary compositor or change the normal keybinding at
-this milestone. The retry state model is unit-tested but is not connected to the
-lock event loop; authentication feedback, enforced retry throttling, and
-non-blocking PAM execution are not implemented yet.
+this milestone. The asynchronous worker and enforced cooldown are covered by
+automated tests, but this revised path must pass the nested test above. Visible
+authentication feedback and a timeout for a stuck PAM backend are not implemented
+yet.
 
 ## Eventual real-session test
 

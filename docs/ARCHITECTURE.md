@@ -29,10 +29,14 @@ implementation) follows this sequence:
 5. Add surfaces for outputs appearing during the lock and remove surfaces for
    destroyed outputs.
 6. Receive keyboard text into `InputState`. Backspace removes one Unicode scalar
-   value; Enter transfers a `PasswordAttempt` to the PAM boundary.
-7. Flush the cleared prompt frame, authenticate the process owner with the
-   `luma` PAM service, and discard the attempt when PAM returns.
-8. Call `unlock_and_destroy` only for `Authenticated`, then flush that request.
+   value; Enter starts an attempt and transfers its token and zeroizing
+   `PasswordAttempt` to the PAM worker.
+7. Continue dispatching Wayland while PAM runs. The worker sends only the token
+   and a generic result through a `calloop` channel that wakes the event loop.
+8. Apply the result to `AuthenticationState`. Denial and infrastructure failure
+   keep the lock active and enforce the progressive bounded cooldown.
+9. Call `unlock_and_destroy` only when the active attempt returns
+   `UnlockAuthorized`.
 
 `finished` without a successful PAM result is treated as an unsuccessful lock
 run. The client never treats a client crash, Enter alone, a blank password, or
@@ -46,6 +50,9 @@ an authentication error as an unlock authorization.
 - `src/auth.rs` resolves the username from the process UID using `uzers`, never
   from `$USER` or configuration. It uses `pam-client2` with a custom conversation
   and does not log PAM prompts or messages.
+- `src/auth/worker.rs` owns the background PAM thread. It catches authentication
+  panics as infrastructure failures, drops rejected requests immediately, and
+  returns no password or PAM diagnostic through its completion channel.
 - `pam/luma` imports only the `auth` rules from the system `login` policy. Luma
   does not create a PAM session or run account-management rules while unlocking
   an already-running desktop session.
@@ -71,18 +78,20 @@ and authenticated.
 - Time is supplied by the event loop using `Instant`, keeping transitions
   deterministic and unit-testable without sleeping.
 
-This state machine is not connected to the current synchronous PAM call yet.
-The next authentication milestone must move PAM work off the Wayland event loop
-and drive this contract with attempt-scoped worker results.
+The authenticated lock drives this state machine from the Wayland event loop.
+Its dispatch timeout follows the next feedback or cooldown deadline, while the
+worker completion channel wakes the loop immediately when PAM finishes.
 
 ## Current limitations
 
 These are known follow-up tasks, not reasons to bypass the safety rules:
 
-- PAM runs synchronously after the prompt frame is flushed. The authentication
-  state model exists, but connecting its throttling and stale-result protection,
-  rendering generic visible feedback, and moving PAM work off the event loop are
-  still pending.
+- Authentication failures enforce cooldown but do not have visible text or color
+  feedback yet. During authentication and cooldown, additional keyboard input is
+  ignored.
+- A PAM transaction has no cancellation timeout yet. A PAM backend that never
+  returns leaves the attempt authenticating, although Wayland rendering and
+  output handling continue to run.
 - The real lock currently renders the opaque software fallback only. Background
   capture, blur, clock typography, theming of the real lock, and animation are
   not connected to the lock surfaces yet.
@@ -95,7 +104,8 @@ These are known follow-up tasks, not reasons to bypass the safety rules:
 
 ## Verification status
 
-The authenticated path has been exercised in a nested niri with a watchdog. A
-correct password unlocked only the nested compositor. The release binary builds
-without the smoke command, and the current suite passes `51` tests with
-`cargo fmt`, Clippy, and Cargo tests.
+The earlier synchronous authenticated path was exercised in a nested niri with a
+watchdog, where a correct password unlocked only the nested compositor. The new
+worker-driven path still requires the same nested test before primary-session
+use. The release binary builds without the smoke command, and the current suite
+passes `55` tests with `cargo fmt`, Clippy, and Cargo tests.

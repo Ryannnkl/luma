@@ -20,6 +20,9 @@ protocols, beginning with `ext-session-lock-v1`.
 - Clear sensitive input from memory immediately after each authentication attempt.
 - Scope every authentication result to an attempt token. Ignore stale or cancelled
   results, and authorize unlocking only through the authenticated state transition.
+- Run PAM outside the Wayland event loop. Authentication completions must wake the
+  event loop through its registered channel; never poll secrets or block rendering
+  while PAM is running.
 - Validate critical resources before requesting a session lock. After the
   compositor's `locked` event, create an opaque fallback surface with a usable
   authentication prompt for every active output.
@@ -60,6 +63,11 @@ client must begin at most one attempt at a time, associate worker results with t
 returned `AttemptToken`, and act on `UnlockAuthorized` only. Denial and
 infrastructure failure keep the session locked and pass through feedback and a
 progressively bounded cooldown before input is accepted again.
+
+`src/auth/worker.rs` owns the PAM worker boundary. It receives password ownership
+once, catches worker-side authentication panics as infrastructure failures, and
+returns only an attempt token plus a generic outcome. Keep the smoke path free of
+this worker and of all real authentication.
 
 ## Development workflow
 
