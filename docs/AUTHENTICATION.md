@@ -37,6 +37,12 @@ the Wayland session lock. Enter transfers the zeroizing password attempt to PAM.
 Only an authenticated result authorizes `unlock_and_destroy`; denial or PAM
 infrastructure failure leaves the session locked.
 
+The independent authentication state model issues an `AttemptToken` for each
+submission, rejects concurrent attempts, ignores stale results, and models a
+progressive bounded cooldown after failures. It is currently unit-tested but not
+yet connected to the synchronous PAM path. Until that integration is complete,
+the real lock does not provide retry delay or visible failure feedback.
+
 The bounded `--lock-smoke` command remains disconnected from PAM and exists only
 in debug builds. Release builds do not contain its command, timer, or environment
 variable gate.

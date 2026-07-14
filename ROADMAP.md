@@ -34,7 +34,10 @@ until the release gate is satisfied.
 - [x] Add a minimal PAM service and a narrow Rust authentication boundary.
 - [x] Store password input in zeroizing memory and exclude secrets from diagnostics.
 - [x] Unlock only after PAM succeeds, without a timer bypass in release builds.
-- Add retry throttling, cancellation, and generic failure messages.
+- [x] Model one active attempt, stale-result rejection, and progressive bounded
+  cooldown as explicit state transitions.
+- Connect the authentication state to the lock event loop and render generic
+  failure feedback.
 - Keep rendering and input responsive while PAM performs authentication.
 
 ## Phase 5: visual design

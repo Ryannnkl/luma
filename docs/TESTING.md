@@ -168,8 +168,9 @@ target/release/luma --lock-smoke
 ```
 
 Do not use `--lock` in the primary compositor or change the normal keybinding at
-this milestone. Authentication feedback, retry throttling, and non-blocking PAM
-execution are not implemented yet.
+this milestone. The retry state model is unit-tested but is not connected to the
+lock event loop; authentication feedback, enforced retry throttling, and
+non-blocking PAM execution are not implemented yet.
 
 ## Eventual real-session test
 

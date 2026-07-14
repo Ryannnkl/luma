@@ -18,6 +18,8 @@ protocols, beginning with `ext-session-lock-v1`.
   session or run login account-management rules while unlocking.
 - Never log, persist, clone unnecessarily, or expose password contents.
 - Clear sensitive input from memory immediately after each authentication attempt.
+- Scope every authentication result to an attempt token. Ignore stale or cancelled
+  results, and authorize unlocking only through the authenticated state transition.
 - Validate critical resources before requesting a session lock. After the
   compositor's `locked` event, create an opaque fallback surface with a usable
   authentication prompt for every active output.
@@ -52,6 +54,12 @@ The intended lifecycle is:
 5. Create and render an opaque surface for every active output.
 6. Accept input and authenticate through PAM.
 7. Call `unlock_and_destroy` only after authentication succeeds.
+
+Authentication state is modeled independently in `src/state.rs`. The Wayland
+client must begin at most one attempt at a time, associate worker results with the
+returned `AttemptToken`, and act on `UnlockAuthorized` only. Denial and
+infrastructure failure keep the session locked and pass through feedback and a
+progressively bounded cooldown before input is accepted again.
 
 ## Development workflow
 

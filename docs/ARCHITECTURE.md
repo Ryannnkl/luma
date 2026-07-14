@@ -53,12 +53,35 @@ an authentication error as an unlock authorization.
   secret bypass. The smoke timer is removed from release builds with
   `debug_assertions`.
 
+## Authentication state contract
+
+`src/state.rs` keeps authentication control independent from PAM, Wayland, and
+rendering. Its public phases are idle, authenticating, denied, error, cooldown,
+and authenticated.
+
+- `begin_attempt` accepts only the idle state and returns a unique
+  `AttemptToken`. A second submission cannot start concurrently.
+- `complete_attempt` accepts only the active token. A stale or cancelled worker
+  result is ignored, including a late successful result.
+- Only an authenticated completion returns `UnlockAuthorized`. Denial and
+  infrastructure failure return `KeepLocked` and use distinct internal phases
+  without exposing credential details.
+- Failed attempts pass through a generic feedback interval and a progressive,
+  capped cooldown before input is accepted again.
+- Time is supplied by the event loop using `Instant`, keeping transitions
+  deterministic and unit-testable without sleeping.
+
+This state machine is not connected to the current synchronous PAM call yet.
+The next authentication milestone must move PAM work off the Wayland event loop
+and drive this contract with attempt-scoped worker results.
+
 ## Current limitations
 
 These are known follow-up tasks, not reasons to bypass the safety rules:
 
-- PAM runs synchronously after the prompt frame is flushed. Retry throttling,
-  cancellation, generic visible failure feedback, and non-blocking PAM work are
+- PAM runs synchronously after the prompt frame is flushed. The authentication
+  state model exists, but connecting its throttling and stale-result protection,
+  rendering generic visible feedback, and moving PAM work off the event loop are
   still pending.
 - The real lock currently renders the opaque software fallback only. Background
   capture, blur, clock typography, theming of the real lock, and animation are
@@ -74,5 +97,5 @@ These are known follow-up tasks, not reasons to bypass the safety rules:
 
 The authenticated path has been exercised in a nested niri with a watchdog. A
 correct password unlocked only the nested compositor. The release binary builds
-without the smoke command, and the current suite passes `45` tests with
+without the smoke command, and the current suite passes `51` tests with
 `cargo fmt`, Clippy, and Cargo tests.
