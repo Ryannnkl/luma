@@ -1,8 +1,13 @@
-use std::fmt;
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
 
 #[cfg(debug_assertions)]
-use std::{thread, time::Duration};
+use std::thread;
 
+use calloop::{EventLoop, channel};
+use calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::error::GlobalError as SctkGlobalError;
 use smithay_client_toolkit::{
     delegate_keyboard, delegate_output, delegate_registry, delegate_seat, delegate_session_lock,
@@ -30,8 +35,9 @@ use wayland_client::{
 };
 
 use crate::{
-    auth::{AuthenticationResult, authenticate_current_user},
-    input::{InputState, PasswordAttempt},
+    auth::worker::{AuthenticationCompletion, AuthenticationWorker},
+    input::InputState,
+    state::{AuthenticationOutcome, AuthenticationState, CompletionAction},
     wayland::opaque::draw_lock_frame,
 };
 
@@ -46,10 +52,27 @@ pub fn run_authenticated() -> Result<(), LockError> {
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
-    let mut state = LockState::new(&globals, &qh)?;
+    let (completion_sender, completion_channel) = channel::channel();
+    let authentication_worker =
+        AuthenticationWorker::spawn(completion_sender).map_err(LockError::AuthenticationWorker)?;
+    let mut state = LockState::new(&globals, &qh, Some(authentication_worker))?;
     if state.output_state.outputs().next().is_none() {
         return Err(LockError::NoOutputs);
     }
+
+    let mut event_loop: EventLoop<LockState> =
+        EventLoop::try_new().map_err(|error| LockError::EventLoop(error.to_string()))?;
+    WaylandSource::new(connection.clone(), event_queue)
+        .insert(event_loop.handle())
+        .map_err(|_| LockError::EventSource("could not register the Wayland source"))?;
+    event_loop
+        .handle()
+        .insert_source(completion_channel, |event, (), state| {
+            if let channel::Event::Msg(completion) = event {
+                state.handle_authentication_completion(completion);
+            }
+        })
+        .map_err(|_| LockError::EventSource("could not register the authentication channel"))?;
 
     let lock = state
         .lock_manager
@@ -57,31 +80,12 @@ pub fn run_authenticated() -> Result<(), LockError> {
         .map_err(|error: SctkGlobalError| LockError::Lock(error.to_string()))?;
     state.session_lock = Some(lock);
 
-    let mut event_queue = event_queue;
     while !state.finished {
-        event_queue
-            .blocking_dispatch(&mut state)
-            .map_err(LockError::Dispatch)?;
-
-        let Some(password) = state.pending_attempt.take() else {
-            continue;
-        };
-        let lock_is_active = state
-            .session_lock
-            .as_ref()
-            .is_some_and(SessionLock::is_locked);
-        if !lock_is_active {
-            continue;
-        }
-
-        connection.flush().map_err(LockError::Flush)?;
-        if authentication_authorizes_unlock(authenticate_current_user(password)) {
-            state.unlock_authorized = true;
-            if let Some(session_lock) = &state.session_lock {
-                session_lock.unlock();
-                connection.flush().map_err(LockError::Flush)?;
-            }
-        }
+        let timeout = state.authentication_timeout();
+        event_loop
+            .dispatch(timeout, &mut state)
+            .map_err(|error| LockError::EventLoop(error.to_string()))?;
+        state.advance_authentication();
     }
 
     if state.unlock_authorized {
@@ -89,12 +93,6 @@ pub fn run_authenticated() -> Result<(), LockError> {
     } else {
         Err(LockError::FinishedWithoutAuthentication)
     }
-}
-
-fn authentication_authorizes_unlock(
-    result: Result<AuthenticationResult, crate::auth::AuthenticationError>,
-) -> bool {
-    matches!(result, Ok(AuthenticationResult::Authenticated))
 }
 
 /// Runs a deliberately bounded opaque lock smoke test.
@@ -112,7 +110,7 @@ pub fn run(timeout: Duration) -> Result<(), LockError> {
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
-    let mut state = LockState::new(&globals, &qh)?;
+    let mut state = LockState::new(&globals, &qh, None)?;
     let lock = state
         .lock_manager
         .lock(&qh)
@@ -131,7 +129,6 @@ pub fn run(timeout: Duration) -> Result<(), LockError> {
         event_queue
             .blocking_dispatch(&mut state)
             .map_err(LockError::Dispatch)?;
-        drop(state.pending_attempt.take());
     }
 
     timer.join().map_err(|_| LockError::TimerPanic)?;
@@ -146,7 +143,9 @@ pub enum LockError {
     Bind(String),
     Lock(String),
     Buffer(String),
-    Flush(wayland_client::backend::WaylandError),
+    AuthenticationWorker(std::io::Error),
+    EventLoop(String),
+    EventSource(&'static str),
     NoOutputs,
     FinishedWithoutAuthentication,
     #[cfg(debug_assertions)]
@@ -164,7 +163,14 @@ impl fmt::Display for LockError {
             Self::Bind(source) => write!(formatter, "could not bind a lock dependency: {source}"),
             Self::Lock(source) => write!(formatter, "could not request the session lock: {source}"),
             Self::Buffer(source) => write!(formatter, "could not create the lock buffer: {source}"),
-            Self::Flush(source) => write!(formatter, "could not flush Wayland requests: {source}"),
+            Self::AuthenticationWorker(source) => {
+                write!(
+                    formatter,
+                    "could not start the authentication worker: {source}"
+                )
+            }
+            Self::EventLoop(source) => write!(formatter, "lock event loop failed: {source}"),
+            Self::EventSource(source) => formatter.write_str(source),
             Self::NoOutputs => formatter.write_str("Wayland reported no outputs to lock"),
             Self::FinishedWithoutAuthentication => {
                 formatter.write_str("the session lock ended without an authenticated unlock")
@@ -183,7 +189,7 @@ struct LockState {
     seat_state: SeatState,
     keyboard: Option<wayland_client::protocol::wl_keyboard::WlKeyboard>,
     input: InputState,
-    pending_attempt: Option<PasswordAttempt>,
+    authentication: Option<AuthenticationController>,
     shm_state: Shm,
     pool: SlotPool,
     compositor: wl_compositor::WlCompositor,
@@ -192,6 +198,11 @@ struct LockState {
     surfaces: Vec<LockSurfaceState>,
     unlock_authorized: bool,
     finished: bool,
+}
+
+struct AuthenticationController {
+    state: AuthenticationState,
+    worker: AuthenticationWorker,
 }
 
 struct LockSurfaceState {
@@ -203,7 +214,11 @@ struct LockSurfaceState {
 }
 
 impl LockState {
-    fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, LockError> {
+    fn new(
+        globals: &GlobalList,
+        qh: &QueueHandle<Self>,
+        authentication_worker: Option<AuthenticationWorker>,
+    ) -> Result<Self, LockError> {
         let compositor = globals
             .bind(qh, 1..=6, ())
             .map_err(|error| LockError::Bind(error.to_string()))?;
@@ -218,7 +233,10 @@ impl LockState {
             seat_state: SeatState::new(globals, qh),
             keyboard: None,
             input: InputState::new(64),
-            pending_attempt: None,
+            authentication: authentication_worker.map(|worker| AuthenticationController {
+                state: AuthenticationState::default(),
+                worker,
+            }),
             shm_state,
             pool,
             compositor,
@@ -316,7 +334,6 @@ impl SeatHandler for LockState {
         if capability == Capability::Keyboard {
             self.keyboard = None;
             self.input.clear();
-            self.pending_attempt = None;
             self.redraw_input_indicator();
         }
     }
@@ -329,7 +346,6 @@ impl SeatHandler for LockState {
     ) {
         self.keyboard = None;
         self.input.clear();
-        self.pending_attempt = None;
         self.redraw_input_indicator();
     }
 }
@@ -356,7 +372,6 @@ impl KeyboardHandler for LockState {
         _serial: u32,
     ) {
         self.input.clear();
-        self.pending_attempt = None;
         self.redraw_input_indicator();
     }
 
@@ -438,12 +453,23 @@ impl LockState {
     }
 
     fn handle_key(&mut self, event: KeyEvent) {
-        if self.pending_attempt.is_some() {
+        if !self
+            .session_lock
+            .as_ref()
+            .is_some_and(SessionLock::is_locked)
+        {
+            return;
+        }
+        if self
+            .authentication
+            .as_ref()
+            .is_some_and(|authentication| !authentication.state.accepts_input())
+        {
             return;
         }
         match event.keysym {
             Keysym::BackSpace => self.input.backspace(),
-            Keysym::Return => self.pending_attempt = self.input.submit(),
+            Keysym::Return => self.submit_authentication(),
             _ => {
                 if let Some(text) = event.utf8 {
                     self.input.push_text(&text);
@@ -451,6 +477,72 @@ impl LockState {
             }
         }
         self.redraw_input_indicator();
+    }
+
+    fn submit_authentication(&mut self) {
+        let Some(password) = self.input.submit() else {
+            return;
+        };
+        let Some(authentication) = &mut self.authentication else {
+            drop(password);
+            return;
+        };
+        let Ok(token) = authentication.state.begin_attempt() else {
+            drop(password);
+            return;
+        };
+        if authentication.worker.submit(token, password).is_err() {
+            authentication.state.complete_attempt(
+                token,
+                AuthenticationOutcome::InfrastructureError,
+                Instant::now(),
+            );
+        }
+    }
+
+    fn handle_authentication_completion(&mut self, completion: AuthenticationCompletion) {
+        if self.finished
+            || !self
+                .session_lock
+                .as_ref()
+                .is_some_and(SessionLock::is_locked)
+        {
+            return;
+        }
+        let Some(authentication) = &mut self.authentication else {
+            return;
+        };
+        let action = authentication.state.complete_attempt(
+            completion.token,
+            completion.outcome,
+            Instant::now(),
+        );
+        if action == CompletionAction::UnlockAuthorized {
+            self.unlock_authorized = true;
+            if let Some(session_lock) = &self.session_lock {
+                session_lock.unlock();
+            }
+        }
+        self.redraw_input_indicator();
+    }
+
+    fn authentication_timeout(&self) -> Option<Duration> {
+        self.authentication
+            .as_ref()?
+            .state
+            .next_deadline()
+            .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+    }
+
+    fn advance_authentication(&mut self) {
+        let Some(authentication) = &mut self.authentication else {
+            return;
+        };
+        let previous_phase = authentication.state.phase();
+        authentication.state.advance(Instant::now());
+        if authentication.state.phase() != previous_phase {
+            self.redraw_input_indicator();
+        }
     }
 
     fn redraw_input_indicator(&mut self) {
@@ -510,7 +602,6 @@ impl SessionLockHandler for LockState {
         self.finished = true;
         self.session_lock = None;
         self.input.clear();
-        self.pending_attempt = None;
     }
 
     fn configure(
@@ -549,27 +640,10 @@ delegate_noop!(LockState: ignore wl_surface::WlSurface);
 
 #[cfg(test)]
 mod tests {
-    use crate::auth::{AuthenticationError, AuthenticationResult};
-
-    use super::authentication_authorizes_unlock;
-
     #[test]
     #[cfg(debug_assertions)]
     fn smoke_timeout_is_explicitly_bounded_by_the_caller() {
         let timeout = std::time::Duration::from_secs(5);
         assert!(timeout <= std::time::Duration::from_secs(30));
-    }
-
-    #[test]
-    fn only_successful_pam_authentication_authorizes_unlock() {
-        assert!(authentication_authorizes_unlock(Ok(
-            AuthenticationResult::Authenticated
-        )));
-        assert!(!authentication_authorizes_unlock(Ok(
-            AuthenticationResult::Denied
-        )));
-        assert!(!authentication_authorizes_unlock(Err(
-            AuthenticationError::PamServiceUnavailable
-        )));
     }
 }

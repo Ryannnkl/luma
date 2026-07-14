@@ -4,6 +4,8 @@ use pam_client2::{Context, ConversationHandler, ErrorCode, Flag};
 
 use crate::input::PasswordAttempt;
 
+pub(crate) mod worker;
+
 const PAM_SERVICE: &str = "luma";
 const PAM_SERVICE_PATH: &str = "/etc/pam.d/luma";
 
