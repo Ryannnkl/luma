@@ -1,17 +1,19 @@
 use std::{fmt, path::PathBuf};
 
 #[cfg(debug_assertions)]
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (debug builds, nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma --lock [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (debug builds, nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo or --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[cfg(not(debug_assertions))]
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --demo\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma --lock [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --demo or --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
     Demo {
         config: Option<PathBuf>,
     },
-    Lock,
+    Lock {
+        config: Option<PathBuf>,
+    },
     Check,
     Outputs,
     #[cfg(debug_assertions)]
@@ -40,12 +42,16 @@ where
         return Ok(Command::Help);
     };
 
-    if argument == "--demo" {
-        return parse_demo_options(arguments);
+    if matches!(argument.as_str(), "--demo" | "--lock") {
+        let config = parse_config_options(arguments)?;
+        return Ok(if argument == "--demo" {
+            Command::Demo { config }
+        } else {
+            Command::Lock { config }
+        });
     }
 
     let command = match argument.as_str() {
-        "--lock" => Command::Lock,
         "--check" => Command::Check,
         "--outputs" => Command::Outputs,
         #[cfg(debug_assertions)]
@@ -62,7 +68,7 @@ where
     Ok(command)
 }
 
-fn parse_demo_options<I>(mut arguments: I) -> Result<Command, ParseError>
+fn parse_config_options<I>(mut arguments: I) -> Result<Option<PathBuf>, ParseError>
 where
     I: Iterator<Item = String>,
 {
@@ -85,7 +91,7 @@ where
         }
     }
 
-    Ok(Command::Demo { config })
+    Ok(config)
 }
 
 impl ParseError {
@@ -135,7 +141,10 @@ mod tests {
 
     #[test]
     fn recognizes_authenticated_lock() {
-        assert_eq!(parse(["--lock".to_owned()]), Ok(Command::Lock));
+        assert_eq!(
+            parse(["--lock".to_owned()]),
+            Ok(Command::Lock { config: None })
+        );
     }
 
     #[test]
@@ -147,6 +156,20 @@ mod tests {
                 "/tmp/luma.toml".to_owned(),
             ]),
             Ok(Command::Demo {
+                config: Some("/tmp/luma.toml".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn accepts_custom_lock_config_path() {
+        assert_eq!(
+            parse([
+                "--lock".to_owned(),
+                "--config".to_owned(),
+                "/tmp/luma.toml".to_owned(),
+            ]),
+            Ok(Command::Lock {
                 config: Some("/tmp/luma.toml".into()),
             })
         );

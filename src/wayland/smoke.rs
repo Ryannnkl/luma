@@ -36,7 +36,7 @@ use wayland_client::{
 
 use crate::{
     auth::worker::{AuthenticationCompletion, AuthenticationWorker},
-    config::InputConfig,
+    config::{Config, InputConfig},
     input::InputState,
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
     wayland::opaque::{PromptState, draw_lock_frame},
@@ -48,7 +48,7 @@ use crate::{
 ///
 /// Returns an error when critical Wayland resources are unavailable, the compositor rejects the
 /// lock, or the authenticated unlock request cannot be delivered.
-pub fn run_authenticated() -> Result<(), LockError> {
+pub fn run_authenticated(config: Config) -> Result<(), LockError> {
     let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
@@ -56,7 +56,7 @@ pub fn run_authenticated() -> Result<(), LockError> {
     let (completion_sender, completion_channel) = channel::channel();
     let authentication_worker =
         AuthenticationWorker::spawn(completion_sender).map_err(LockError::AuthenticationWorker)?;
-    let mut state = LockState::new(&globals, &qh, Some(authentication_worker))?;
+    let mut state = LockState::new(&globals, &qh, Some(authentication_worker), config.input)?;
     if state.output_state.outputs().next().is_none() {
         return Err(LockError::NoOutputs);
     }
@@ -111,7 +111,7 @@ pub fn run(timeout: Duration) -> Result<(), LockError> {
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
-    let mut state = LockState::new(&globals, &qh, None)?;
+    let mut state = LockState::new(&globals, &qh, None, InputConfig::default())?;
     let lock = state
         .lock_manager
         .lock(&qh)
@@ -190,6 +190,7 @@ struct LockState {
     seat_state: SeatState,
     keyboard: Option<wayland_client::protocol::wl_keyboard::WlKeyboard>,
     input: InputState,
+    input_config: InputConfig,
     authentication: Option<AuthenticationController>,
     shm_state: Shm,
     pool: SlotPool,
@@ -219,6 +220,7 @@ impl LockState {
         globals: &GlobalList,
         qh: &QueueHandle<Self>,
         authentication_worker: Option<AuthenticationWorker>,
+        input_config: InputConfig,
     ) -> Result<Self, LockError> {
         let compositor = globals
             .bind(qh, 1..=6, ())
@@ -228,14 +230,21 @@ impl LockState {
         let pool =
             SlotPool::new(1, &shm_state).map_err(|error| LockError::Buffer(error.to_string()))?;
 
+        let authentication_policy = crate::state::AuthenticationPolicy {
+            feedback_duration: Duration::from_millis(input_config.feedback_duration_ms),
+            ..crate::state::AuthenticationPolicy::default()
+        };
+        let max_characters = input_config.max_characters;
+
         Ok(Self {
             registry_state: RegistryState::new(globals),
             output_state: OutputState::new(globals, qh),
             seat_state: SeatState::new(globals, qh),
             keyboard: None,
-            input: InputState::new(64),
+            input: InputState::new(max_characters),
+            input_config,
             authentication: authentication_worker.map(|worker| AuthenticationController {
-                state: AuthenticationState::default(),
+                state: AuthenticationState::new(authentication_policy),
                 worker,
             }),
             shm_state,
@@ -580,7 +589,7 @@ impl LockState {
             height,
             self.input.character_count(),
             prompt_state,
-            &InputConfig::default(),
+            &self.input_config,
         );
         buffer
             .attach_to(surface.wl_surface())

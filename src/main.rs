@@ -35,7 +35,9 @@ fn main() -> ExitCode {
         }
         Ok(Command::Check) => check_wayland(),
         Ok(Command::Outputs) => list_outputs(),
-        Ok(Command::Lock) => run_lock(),
+        Ok(Command::Lock {
+            config: config_path,
+        }) => run_lock(config_path.as_deref()),
         #[cfg(debug_assertions)]
         Ok(Command::LockSmoke) => run_lock_smoke(),
         Ok(Command::Help) => {
@@ -144,13 +146,21 @@ fn run_lock_smoke() -> ExitCode {
     }
 }
 
-fn run_lock() -> ExitCode {
+fn run_lock(config_path: Option<&std::path::Path>) -> ExitCode {
+    let config = match config::Config::load(config_path) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("luma: refusing to lock: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     if let Err(error) = auth::validate_service() {
         eprintln!("luma: refusing to lock: {error}");
         return ExitCode::FAILURE;
     }
 
-    match wayland::run_lock() {
+    match wayland::run_lock(config) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("luma: session lock failed: {error}");
