@@ -47,8 +47,9 @@ authorize unlocking.
 While PAM runs, the prompt replaces password-length dots with a generic three-dot
 indicator. Credential denial and infrastructure failure both render the same
 warning marker, followed by an attenuated cooldown indicator. These feedback
-frames do not reveal the submitted password length or failure category. The
-fallback colors and symbols are fixed until real-lock configuration is connected.
+frames do not reveal the submitted password length or failure category. Prompt
+geometry, dot behavior, colors, and feedback duration come from the validated
+`[input]` configuration. Text feedback is not rendered by the real fallback yet.
 
 The bounded `--lock-smoke` command remains disconnected from PAM and exists only
 in debug builds. Release builds do not contain its command, timer, or environment

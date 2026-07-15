@@ -29,6 +29,9 @@ protocols, beginning with `ext-session-lock-v1`.
 - Validate critical resources before requesting a session lock. After the
   compositor's `locked` event, create an opaque fallback surface with a usable
   authentication prompt for every active output.
+- Load and validate lock configuration before requesting the session lock.
+  Configured alpha must be composited into an opaque frame, and
+  `[input].enabled = false` must never hide the real authentication prompt.
 - Handle outputs added, removed, resized, scaled, or transformed while locked;
   never leave a newly active output uncovered.
 - Keep demo mode separate from real locking. Demo mode must never authenticate a
@@ -83,6 +86,11 @@ through authenticating, failure, and cooldown transitions.
 release binary, requires `LUMA_ALLOW_NESTED_TEST=1`, starts a new nested niri, and
 arms an external 30-second systemd watchdog before launching Luma. Its `--stop`
 mode must continue to terminate only the named nested test units.
+
+The real opaque fallback consumes the validated `[input]` configuration for
+position, dimensions, limits, dot geometry, colors, and feedback duration.
+`feedback_text` remains presentation-only metadata until a reviewed text renderer
+is connected; never render configuration text through an unbounded fallback path.
 
 ## Development workflow
 

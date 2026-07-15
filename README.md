@@ -48,6 +48,15 @@ To test another file without changing the user configuration:
 cargo run -- --demo --config ./my-theme.toml
 ```
 
+The authenticated path also accepts an explicit validated file:
+
+```sh
+target/release/luma --lock --config ./my-theme.toml
+```
+
+Run that command only inside the guarded nested-compositor procedure. The helper
+script uses the default `~/.config/luma/config.toml` path.
+
 The configuration controls:
 
 - window size and maximized state;
@@ -60,6 +69,12 @@ The configuration controls:
 Positions use normalized coordinates from `0.0` to `1.0`. Time and date formats
 use Chrono/strftime directives: `%H` is a 24-hour value, `%I` is a 12-hour value,
 `%M` is minutes, and `%p` is AM/PM. Colors accept `#RRGGBB` or `#RRGGBBAA`.
+
+The demo uses every section. The real opaque fallback currently uses `[input]`
+position, dimensions, character and dot limits, dot geometry, colors, and
+feedback duration. It always keeps the authentication prompt visible even when
+`input.enabled` is false, and it does not render `feedback_text` yet. Background,
+blur, clock, and date configuration are not connected to real lock surfaces.
 
 ## Wayland capability check
 
@@ -93,7 +108,7 @@ LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
 
 The lock accepts input through Wayland and unlocks only after PAM succeeds. It
-does not yet provide the final blurred background, clock, configurable real-lock
+does not yet provide the final blurred background, clock, complete real-lock
 theme, or production integration with niri and wlogout. The test runner starts a
 new nested niri and an external 30-second watchdog; it never adds a timed unlock
 to Luma.

@@ -9,8 +9,9 @@ The command paths are intentionally separate:
 
 - `--demo` opens a normal `eframe` window. It never connects to PAM or requests
   a session lock.
-- `--lock` is the authenticated path. It validates `/etc/pam.d/luma`, requests
-  the session lock, and unlocks only after PAM returns success.
+- `--lock` is the authenticated path. It loads validated configuration, validates
+  `/etc/pam.d/luma`, requests the session lock, and unlocks only after PAM returns
+  success. `--config PATH` selects an explicit TOML file.
 - `--lock-smoke` is a bounded protocol test compiled only in debug builds. It
   requires `LUMA_ALLOW_LOCK_SMOKE=1`, unlocks on a timer, and must never be used
   as a production keybinding.
@@ -68,6 +69,9 @@ an authentication error as an unlock authorization.
   30-second systemd watchdog stops the named nested niri service rather than
   sending an unlock request. The production binary contains no corresponding
   timer or environment-variable gate.
+- The real fallback consumes validated `[input]` geometry, limits, colors, and
+  feedback duration. Semi-transparent configured colors are composited over the
+  opaque fallback; their alpha is never copied to the lock-surface frame.
 
 ## Authentication state contract
 
@@ -95,9 +99,9 @@ worker completion channel wakes the loop immediately when PAM finishes.
 
 These are known follow-up tasks, not reasons to bypass the safety rules:
 
-- Authentication feedback currently uses fixed fallback colors and symbols.
-  Configurable colors, text, animation, and renderer-backed typography are not
-  connected to the real lock yet.
+- Authentication prompt geometry and colors are configurable. Feedback text,
+  animation, and renderer-backed typography are not connected to the real lock
+  yet; the fallback uses bounded symbols instead.
 - A PAM transaction has no cancellation timeout yet. A PAM backend that never
   returns leaves the attempt authenticating, although Wayland rendering and
   output handling continue to run.
@@ -117,4 +121,4 @@ The earlier synchronous authenticated path was exercised in a nested niri with a
 watchdog, where a correct password unlocked only the nested compositor. The new
 worker-driven path still requires the same nested test before primary-session
 use. The release binary builds without the smoke command, and the current suite
-passes `59` tests with `cargo fmt`, Clippy, and Cargo tests.
+passes `63` tests with `cargo fmt`, Clippy, and Cargo tests.

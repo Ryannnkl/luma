@@ -148,6 +148,11 @@ Start the guarded test from the project root:
 LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
 
+The runner loads `~/.config/luma/config.toml` when present. Copy and edit
+`config.example.toml` there before starting if the test should exercise custom
+prompt geometry or colors. Invalid configuration is rejected before niri is
+locked.
+
 The runner validates its dependencies and PAM policy, builds the release binary,
 arms an external systemd watchdog, and then launches that binary inside a new
 nested niri. After 30 seconds the watchdog stops `luma-auth-lock.service`, closing

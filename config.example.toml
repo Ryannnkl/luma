@@ -56,6 +56,7 @@ size = 22.0
 color = "#f6f8f7dc"
 
 [input]
+# The real lock always keeps its authentication prompt visible for safety.
 enabled = true
 x = 0.50
 y = 0.925
@@ -71,6 +72,7 @@ empty_dot_color = "#ffffff3e"
 filled_dot_color = "#ecf4f0"
 feedback_background_color = "#265c48d2"
 feedback_text_color = "#bef4d8"
+# Text feedback is currently rendered by the demo only.
 feedback_text = "DEMO ONLY"
 feedback_duration_ms = 2000
 
