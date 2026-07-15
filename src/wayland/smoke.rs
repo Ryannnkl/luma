@@ -36,6 +36,7 @@ use wayland_client::{
 
 use crate::{
     auth::worker::{AuthenticationCompletion, AuthenticationWorker},
+    config::InputConfig,
     input::InputState,
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
     wayland::opaque::{PromptState, draw_lock_frame},
@@ -579,6 +580,7 @@ impl LockState {
             height,
             self.input.character_count(),
             prompt_state,
+            &InputConfig::default(),
         );
         buffer
             .attach_to(surface.wl_surface())
