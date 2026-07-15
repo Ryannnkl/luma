@@ -35,6 +35,9 @@ protocols, beginning with `ext-session-lock-v1`.
   real user or acquire `ext-session-lock-v1`.
 - Test real locking in a nested compositor or virtual machine before testing it in
   the primary desktop session.
+- Keep authenticated-test watchdogs external to Luma and target only the nested
+  compositor service. Never add a timer-based unlock to `--lock` or its release
+  binary.
 - Follow `docs/TESTING.md` for nested niri setup, watchdog recovery, and the
   real-session test gate.
 - Keep swaylock installed and configured as a recovery option until Luma has been
@@ -75,6 +78,11 @@ this worker and of all real authentication.
 The opaque fallback maps both `Denied` and `Error` to the same `PromptState::Failure`.
 It shows no password-length dots outside the ready state and remains fully opaque
 through authenticating, failure, and cooldown transitions.
+
+`scripts/test-nested-lock.sh` is the authenticated-test entry point. It builds the
+release binary, requires `LUMA_ALLOW_NESTED_TEST=1`, starts a new nested niri, and
+arms an external 30-second systemd watchdog before launching Luma. Its `--stop`
+mode must continue to terminate only the named nested test units.
 
 ## Development workflow
 

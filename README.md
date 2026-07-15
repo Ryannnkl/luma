@@ -89,12 +89,14 @@ then run the authenticated path only by following the watchdog procedure in
 [docs/TESTING.md](docs/TESTING.md):
 
 ```sh
-target/release/luma --lock
+LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
 
 The lock accepts input through Wayland and unlocks only after PAM succeeds. It
-does not yet provide the final blurred background, clock, retry feedback, or
-production integration with niri and wlogout.
+does not yet provide the final blurred background, clock, configurable real-lock
+theme, or production integration with niri and wlogout. The test runner starts a
+new nested niri and an external 30-second watchdog; it never adds a timed unlock
+to Luma.
 
 ## Development checks
 

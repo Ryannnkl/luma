@@ -136,21 +136,23 @@ but authorizes unlock only through PAM and has no timer bypass.
 
 ## Authenticated nested lock test
 
-Build the release binary and verify that the PAM policy is installed:
+Review and install the PAM policy before starting the test:
 
 ```sh
-cargo build --release
 sudo install -Dm644 pam/luma /etc/pam.d/luma
 ```
 
-Create a 45-second watchdog, then start release Luma inside nested niri:
+Start the guarded test from the project root:
 
 ```sh
-systemd-run --user --unit=luma-auth-watchdog --on-active=45s \
-  systemctl --user stop luma-auth-lock.service
-systemd-run --user --unit=luma-auth-lock --collect \
-  niri -- /absolute/path/to/target/release/luma --lock
+LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
+
+The runner validates its dependencies and PAM policy, builds the release binary,
+arms an external systemd watchdog, and then launches that binary inside a new
+nested niri. After 30 seconds the watchdog stops `luma-auth-lock.service`, closing
+the entire nested compositor even if Luma's own event loop is stuck. It does not
+unlock Luma and cannot recover a lock started in the primary compositor.
 
 Type the normal user password inside the nested lock and press Enter. An
 incorrect password must leave it locked; a correct password must unlock only the
@@ -162,12 +164,12 @@ nested niri window. Verify this prompt sequence for an incorrect password:
 4. The neutral password dots return when another attempt is allowed.
 
 Confirm that every nested output shows the same state and that output handling
-remains responsive while PAM is running. Stop the nested compositor and watchdog
-after success:
+remains responsive while PAM is running. The watchdog closes the nested window
+automatically after 30 seconds. To close it sooner, run this from an outer-session
+terminal:
 
 ```sh
-systemctl --user stop luma-auth-lock.service
-systemctl --user stop luma-auth-watchdog.timer
+./scripts/test-nested-lock.sh --stop
 ```
 
 Confirm that release builds reject the smoke command:

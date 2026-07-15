@@ -64,6 +64,10 @@ an authentication error as an unlock authorization.
   ready password dots, three-dot authenticating feedback, one generic failure
   marker, and an attenuated cooldown indicator. Failure frames do not encode the
   previous password length.
+- `scripts/test-nested-lock.sh` is outside the runtime trust boundary. Its
+  30-second systemd watchdog stops the named nested niri service rather than
+  sending an unlock request. The production binary contains no corresponding
+  timer or environment-variable gate.
 
 ## Authentication state contract
 

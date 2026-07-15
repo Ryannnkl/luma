@@ -53,3 +53,7 @@ fallback colors and symbols are fixed until real-lock configuration is connected
 The bounded `--lock-smoke` command remains disconnected from PAM and exists only
 in debug builds. Release builds do not contain its command, timer, or environment
 variable gate.
+
+Authenticated testing uses `scripts/test-nested-lock.sh`. Its timer is an external
+systemd watchdog that destroys only the nested compositor after 30 seconds; it is
+not an authentication result and never calls Luma's unlock path.
