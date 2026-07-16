@@ -72,7 +72,7 @@ use Chrono/strftime directives: `%H` is a 24-hour value, `%I` is a 12-hour value
 
 The demo uses every section. The real opaque fallback uses the configured clock,
 optional date, and `[input]` geometry, limits, colors, duration, and bounded
-authentication status text. It always keeps the authentication prompt visible
+authentication animations. It always keeps the authentication prompt visible
 even when `input.enabled` is false. Procedural background settings, session
 capture, and blur are not connected to real lock surfaces yet.
 

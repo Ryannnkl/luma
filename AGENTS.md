@@ -89,10 +89,10 @@ mode must continue to terminate only the named nested test units.
 
 The real opaque fallback consumes the validated `[input]` configuration for
 position, dimensions, limits, dot geometry, colors, feedback duration, and
-bounded status text. It also renders the configured clock and optional date with
-the embedded software font. `feedback_text` remains demo-only metadata; the real
-lock uses `authenticating_text`, `failure_text`, and `cooldown_text`. Keep all
-configured text validated and clipped to its assigned surface region.
+language-neutral visual feedback. It also renders the configured clock and
+optional date with the embedded software font. `feedback_text` remains demo-only
+metadata; real authentication feedback must remain iconographic and must not
+require localization.
 
 ## Development workflow
 

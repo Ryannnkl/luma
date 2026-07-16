@@ -62,10 +62,10 @@ an authentication error as an unlock authorization.
   secret bypass. The smoke timer is removed from release builds with
   `debug_assertions`.
 - `src/wayland/opaque.rs` maps authentication phases to four opaque prompt states.
-  Ready renders password dots; authenticating, failure, and cooldown render
-  bounded generic text through the embedded software font. Feedback frames do
-  not encode the previous password length or distinguish credential denial from
-  infrastructure failure.
+  Ready renders password dots; authenticating renders a three-dot loader; failure
+  renders a short shake with a border and cross icon; cooldown renders a moving
+  six-dot indicator. Feedback frames do not encode the previous password length
+  or distinguish credential denial from infrastructure failure.
 - `scripts/test-nested-lock.sh` is outside the runtime trust boundary. Its
   60-second systemd watchdog stops the named nested niri service rather than
   sending an unlock request. The production binary contains no corresponding
@@ -103,8 +103,9 @@ worker completion channel wakes the loop immediately when PAM finishes.
 
 These are known follow-up tasks, not reasons to bypass the safety rules:
 
-- Authentication prompt geometry, colors, and bounded status text are
-  configurable. Prompt animation is not connected to the real lock yet.
+- Authentication prompt geometry and colors are configurable. Language-neutral
+  feedback animations are connected to the real lock; broader motion theming is
+  not configurable yet.
 - A PAM transaction has no cancellation timeout yet. A PAM backend that never
   returns leaves the attempt authenticating, although Wayland rendering and
   output handling continue to run.
