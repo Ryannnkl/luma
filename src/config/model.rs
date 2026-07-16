@@ -27,6 +27,12 @@ impl Config {
                 "must contain at most 32 spots",
             ));
         }
+        if self.background.blur_radius > 64 {
+            return Err(ValidationError::new(
+                "background.blur_radius",
+                "must not exceed 64",
+            ));
+        }
         for (index, spot) in self.background.spots.iter().enumerate() {
             validate_range(spot.x, -1.0..=2.0, format!("background.spots[{index}].x"))?;
             validate_range(spot.y, -1.0..=2.0, format!("background.spots[{index}].y"))?;
@@ -167,6 +173,8 @@ fn validate_text(value: &str, field: &'static str, max: usize) -> Result<(), Val
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct BackgroundConfig {
+    pub capture_enabled: bool,
+    pub blur_radius: u32,
     pub base_color: Color,
     pub dim_color: Color,
     pub spots: Vec<BackgroundSpot>,
@@ -175,6 +183,8 @@ pub struct BackgroundConfig {
 impl Default for BackgroundConfig {
     fn default() -> Self {
         Self {
+            capture_enabled: false,
+            blur_radius: 24,
             base_color: Color::rgb(24, 52, 52),
             dim_color: Color::rgba(0, 0, 0, 82),
             spots: vec![
@@ -385,5 +395,17 @@ mod tests {
             .expect_err("non-finite positions must be rejected");
 
         assert_eq!(error.field, "clock.x");
+    }
+
+    #[test]
+    fn rejects_excessive_blur_radius() {
+        let mut config = Config::default();
+        config.background.blur_radius = 65;
+
+        let error = config
+            .validate()
+            .expect_err("blur radius must remain bounded");
+
+        assert_eq!(error.field, "background.blur_radius");
     }
 }

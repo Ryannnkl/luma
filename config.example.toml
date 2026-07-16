@@ -3,6 +3,8 @@
 # Colors accept #RRGGBB or #RRGGBBAA.
 
 [background]
+capture_enabled = false
+blur_radius = 24
 base_color = "#183434"
 dim_color = "#00000052"
 
