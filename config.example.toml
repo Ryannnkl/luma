@@ -71,19 +71,6 @@ background_color = "#0000009b"
 empty_dot_color = "#ffffff3e"
 filled_dot_color = "#ecf4f0"
 feedback_background_color = "#265c48d2"
-feedback_text_color = "#bef4d8"
+feedback_accent_color = "#bef4d8"
 error_color = "#ff8a80"
-# Shown only by the interactive demo after pressing Enter.
-feedback_text = "DEMO ONLY"
 feedback_duration_ms = 2000
-
-[demo_label]
-enabled = true
-text = "DEMO  ·  ESC TO CLOSE"
-x = 0.085
-y = 0.057
-width = 174.0
-height = 34.0
-text_size = 12.0
-background_color = "#00000070"
-text_color = "#ffffffd2"

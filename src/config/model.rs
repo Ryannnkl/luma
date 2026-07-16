@@ -12,7 +12,6 @@ pub struct Config {
     pub clock: ClockConfig,
     pub date: DateConfig,
     pub input: InputConfig,
-    pub demo_label: DemoLabelConfig,
 }
 
 impl Config {
@@ -103,17 +102,7 @@ impl Config {
                 "must not exceed 60000",
             ));
         }
-        validate_text(&self.input.feedback_text, "input.feedback_text", 128)?;
-
-        validate_position(self.demo_label.x, self.demo_label.y, "demo_label")?;
-        validate_range(self.demo_label.width, 24.0..=2_048.0, "demo_label.width")?;
-        validate_range(self.demo_label.height, 16.0..=512.0, "demo_label.height")?;
-        validate_range(
-            self.demo_label.text_size,
-            8.0..=128.0,
-            "demo_label.text_size",
-        )?;
-        validate_text(&self.demo_label.text, "demo_label.text", 128)
+        Ok(())
     }
 }
 
@@ -326,9 +315,8 @@ pub struct InputConfig {
     pub empty_dot_color: Color,
     pub filled_dot_color: Color,
     pub feedback_background_color: Color,
-    pub feedback_text_color: Color,
+    pub feedback_accent_color: Color,
     pub error_color: Color,
-    pub feedback_text: String,
     pub feedback_duration_ms: u64,
 }
 
@@ -349,40 +337,9 @@ impl Default for InputConfig {
             empty_dot_color: Color::rgba(255, 255, 255, 62),
             filled_dot_color: Color::rgb(236, 244, 240),
             feedback_background_color: Color::rgba(38, 92, 72, 210),
-            feedback_text_color: Color::rgb(190, 244, 216),
+            feedback_accent_color: Color::rgb(190, 244, 216),
             error_color: Color::rgb(255, 138, 128),
-            feedback_text: "DEMO ONLY".to_owned(),
             feedback_duration_ms: 2_000,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct DemoLabelConfig {
-    pub enabled: bool,
-    pub text: String,
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-    pub text_size: f32,
-    pub background_color: Color,
-    pub text_color: Color,
-}
-
-impl Default for DemoLabelConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            text: "DEMO  ·  ESC TO CLOSE".to_owned(),
-            x: 0.085,
-            y: 0.057,
-            width: 174.0,
-            height: 34.0,
-            text_size: 12.0,
-            background_color: Color::rgba(0, 0, 0, 112),
-            text_color: Color::rgba(255, 255, 255, 210),
         }
     }
 }

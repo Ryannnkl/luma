@@ -122,7 +122,7 @@ pub(crate) fn draw_lock_prompt(
         }
         PromptState::Failure => {
             let color = opaque_over(
-                Rgba::from_config(config.feedback_text_color),
+                Rgba::from_config(config.feedback_accent_color),
                 feedback_background,
             );
             draw_failure_marker(canvas, width, height, prompt, color);
@@ -340,7 +340,7 @@ fn draw_cooldown_dots(
         .saturating_sub(span / 2);
     let center_y = prompt.y.saturating_add(prompt.height / 2);
     let muted = opaque_over(Rgba::from_config(config.empty_dot_color), background);
-    let accent = opaque_over(Rgba::from_config(config.feedback_text_color), background);
+    let accent = opaque_over(Rgba::from_config(config.feedback_accent_color), background);
     for index in 0..dot_count {
         fill_circle(
             canvas,
@@ -796,7 +796,7 @@ mod tests {
         assert_eq!(
             short_password[marker_index..marker_index + 4],
             encoded(opaque_over(
-                Rgba::from_config(config.feedback_text_color),
+                Rgba::from_config(config.feedback_accent_color),
                 opaque_over(
                     Rgba::from_config(config.feedback_background_color),
                     BACKGROUND,
@@ -887,7 +887,7 @@ mod tests {
             empty_dot_color: Color::rgb(4, 5, 6),
             filled_dot_color: Color::rgb(7, 8, 9),
             feedback_background_color: Color::rgb(10, 11, 12),
-            feedback_text_color: Color::rgb(13, 14, 15),
+            feedback_accent_color: Color::rgb(13, 14, 15),
             ..InputConfig::default()
         };
 

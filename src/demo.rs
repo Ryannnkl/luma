@@ -6,7 +6,7 @@ use eframe::egui::{
     TextureOptions, Vec2,
 };
 
-use crate::config::{BackgroundConfig, Color, Config, DateConfig, DemoLabelConfig, InputConfig};
+use crate::config::{BackgroundConfig, Color, Config, DateConfig, InputConfig};
 
 pub fn run(config: Config) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -108,7 +108,7 @@ impl DemoApp {
         );
         painter.rect_filled(rect, 0.0, to_egui_color(self.config.background.dim_color));
 
-        paint_demo_label(ui, &self.config.demo_label);
+        paint_demo_label(ui);
         paint_clock(ui, &self.config);
         paint_date(ui, &self.config.date);
         paint_password_indicator(
@@ -137,28 +137,23 @@ impl eframe::App for DemoApp {
     }
 }
 
-fn paint_demo_label(ui: &egui::Ui, config: &DemoLabelConfig) {
-    if !config.enabled {
-        return;
-    }
-
+fn paint_demo_label(ui: &egui::Ui) {
+    const WIDTH: f32 = 174.0;
+    const HEIGHT: f32 = 34.0;
     let rect = ui.max_rect();
-    let label_rect = Rect::from_center_size(
-        position(rect, config.x, config.y),
-        Vec2::new(config.width, config.height),
-    );
+    let label_rect = Rect::from_center_size(position(rect, 0.085, 0.057), Vec2::new(WIDTH, HEIGHT));
 
     ui.painter().rect_filled(
         label_rect,
-        config.height / 2.0,
-        to_egui_color(config.background_color),
+        HEIGHT / 2.0,
+        Color32::from_rgba_unmultiplied(0, 0, 0, 112),
     );
     ui.painter().text(
         label_rect.center(),
         Align2::CENTER_CENTER,
-        &config.text,
-        FontId::new(config.text_size, FontFamily::Proportional),
-        to_egui_color(config.text_color),
+        "DEMO  ·  ESC TO CLOSE",
+        FontId::new(12.0, FontFamily::Proportional),
+        Color32::from_rgba_unmultiplied(255, 255, 255, 210),
     );
 }
 
@@ -245,9 +240,9 @@ fn paint_password_indicator(
         ui.painter().text(
             indicator_rect.center(),
             Align2::CENTER_CENTER,
-            &config.feedback_text,
+            "DEMO ONLY",
             FontId::new(11.0, FontFamily::Proportional),
-            to_egui_color(config.feedback_text_color),
+            to_egui_color(config.feedback_accent_color),
         );
         return;
     }
