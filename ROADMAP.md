@@ -44,10 +44,11 @@ until the release gate is satisfied.
 
 - [x] Connect validated input geometry and colors to the opaque real-lock prompt.
 - [x] Render clock, optional date, and bounded prompt feedback in software.
-- Capture the current session before acquiring the lock.
-- Add GPU blur, dimming, full typography, and subtle animation.
-- Preserve the opaque software fallback when capture or GPU rendering fails.
-- Support multiple monitors without exposing uncaptured session contents.
+- [x] Capture every current output before acquiring the lock when configured.
+- [x] Add bounded software blur and dimming without persisting screenshots.
+- Add GPU blur, full typography, and subtle animation.
+- [x] Preserve the opaque software fallback for new or unmatched outputs.
+- [x] Support multiple captured monitors without exposing uncaptured contents.
 
 ## Phase 6: resilience and integration
 

@@ -167,7 +167,8 @@ incorrect password must leave it locked; a correct password must unlock only the
 nested niri window. Verify this prompt sequence for an incorrect password:
 
 1. The password dots become an animated three-dot loader while PAM runs.
-2. The prompt shakes and shows a border with a cross icon without exposing the previous password length.
+2. The prompt shakes and shows a border with a cross icon without exposing the
+   previous password length.
 3. A moving six-dot cooldown indicator remains while input is intentionally ignored.
 4. The neutral password dots return when another attempt is allowed.
 
@@ -179,6 +180,13 @@ terminal:
 ```sh
 ./scripts/test-nested-lock.sh --stop
 ```
+
+For the optional capture path, set `background.capture_enabled = true` and a
+`background.blur_radius` from 0 through 64 in the test configuration. Confirm
+that each output shows its own cursor-free screenshot beneath the clock and
+prompt. A radius of 0 must remain sharp, a positive radius must visibly blur the
+frame, and the prompt must remain opaque. Invalid radii and capture failures must
+abort before nested niri becomes locked.
 
 Confirm that release builds reject the smoke command:
 

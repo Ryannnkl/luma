@@ -60,7 +60,7 @@ script uses the default `~/.config/luma/config.toml` path.
 
 The configuration controls:
 
-- procedural background colors, dimming, and color spots;
+- optional in-memory output capture, software blur, background dimming, and colors;
 - clock visibility, normalized position, size, two-line offsets, formats, and colors;
 - optional date visibility, format, position, size, and color;
 - input visibility, position, dimensions, dot behavior, feedback, and colors.
@@ -73,8 +73,21 @@ The debug-only demo previews these visual sections with a fixed, non-configurabl
 development warning. The real opaque fallback uses the configured clock,
 optional date, and `[input]` geometry, limits, colors, duration, and bounded
 authentication animations. It always keeps the authentication prompt visible
-even when `input.enabled` is false. Procedural background settings, session
-capture, and blur are not connected to real lock surfaces yet.
+even when `input.enabled` is false.
+
+Background capture is disabled by default. Enable it explicitly and choose a
+software blur radius from 0 through 64 pixels:
+
+```toml
+[background]
+capture_enabled = true
+blur_radius = 24
+```
+
+The capture happens once per output before the lock request, excludes the cursor,
+stays in memory, and is never written to disk. A zero radius keeps the screenshot
+sharp. If enabled capture fails, Luma refuses to lock. Outputs connected after
+capture use the opaque fallback.
 
 ## Wayland capability check
 
@@ -107,11 +120,11 @@ then run the authenticated path only by following the watchdog procedure in
 LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
 
-The lock accepts input through Wayland, renders its configured clock and optional
-date, and unlocks only after PAM succeeds. It does not yet provide session
-background capture, blur, the complete real-lock theme, or production integration
-with niri and wlogout. The test runner starts a new nested niri and an external
-60-second watchdog; it never adds a timed unlock to Luma.
+The lock accepts input through Wayland, renders its configured background, clock,
+and optional date, and unlocks only after PAM succeeds. It does not yet provide
+GPU blur, the complete real-lock theme, or production integration with niri and
+wlogout. The test runner starts a new nested niri and an external 60-second
+watchdog; it never adds a timed unlock to Luma.
 
 ## Development checks
 

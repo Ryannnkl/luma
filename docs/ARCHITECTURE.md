@@ -77,6 +77,13 @@ an authentication error as an unlock authorization.
 - Clock and optional date text use a validated embedded font and are redrawn once
   per second. Font loading happens before the session lock is requested, and the
   authentication prompt is rendered last so configured text cannot cover it.
+- `src/wayland/capture.rs` obtains one cursor-free wlr-screencopy frame per
+  current output before requesting the lock. It accepts only ARGB8888/XRGB8888
+  shared-memory buffers, bounds per-image and aggregate allocations, and maps
+  captures to lock surfaces by stable output name.
+- `src/renderer/background.rs` normalizes captures to packed opaque ARGB8888 and
+  applies a bounded linear-time software blur. Pixels remain in process memory
+  and are dropped when the locker exits.
 
 ## Authentication state contract
 
@@ -110,9 +117,9 @@ These are known follow-up tasks, not reasons to bypass the safety rules:
 - A PAM transaction has no cancellation timeout yet. A PAM backend that never
   returns leaves the attempt authenticating, although Wayland rendering and
   output handling continue to run.
-- The real lock currently renders the opaque software fallback with clock and
-  optional date typography. Background capture, blur, full theming, and animation
-  are not connected to the lock surfaces yet.
+- The real lock supports optional screenshot capture and software blur. GPU blur,
+  procedural fallback theming, and broader animation controls are not connected
+  to the lock surfaces yet.
 - Shared-memory allocation and attach failures need a reviewed recovery path
   that preserves an opaque usable prompt before primary-session use.
 - Output hotplug is handled, but repeated scale, transform, suspend/resume, and

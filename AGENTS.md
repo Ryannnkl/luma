@@ -32,6 +32,12 @@ protocols, beginning with `ext-session-lock-v1`.
 - Load and validate lock configuration before requesting the session lock.
   Configured alpha must be composited into an opaque frame, and
   `[input].enabled = false` must never hide the real authentication prompt.
+- Keep background capture disabled by default. When explicitly enabled, capture
+  every current output before requesting the session lock, keep pixels only in
+  memory, exclude the cursor, and refuse to lock if capture fails. Enforce image
+  and aggregate allocation limits before creating compositor-provided buffers.
+- A captured background is presentation-only. Newly connected or unmatched
+  outputs must use the opaque fallback, and the real prompt must be rendered last.
 - Handle outputs added, removed, resized, scaled, or transformed while locked;
   never leave a newly active output uncovered.
 - Keep demo mode behind `debug_assertions` and separate from real locking. Release
@@ -94,6 +100,13 @@ language-neutral visual feedback. It also renders the configured clock and
 optional date with the embedded software font. Real authentication feedback must
 remain iconographic and must not require localization. Demo labels and
 escape-to-close behavior must never enter the release configuration schema.
+
+Optional background capture uses one `zwlr_screencopy_manager_v1` frame per
+output before the session-lock request. Captures are matched to lock surfaces by
+stable output name, normalized to opaque ARGB8888, blurred within bounded memory,
+and discarded when the lock process exits. Capture failures while enabled are
+pre-lock errors; never silently downgrade a requested capture on an existing
+output after acquiring the lock.
 
 ## Development workflow
 
