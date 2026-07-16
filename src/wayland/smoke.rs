@@ -40,7 +40,9 @@ use crate::{
     input::InputState,
     renderer::TextRenderer,
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
-    wayland::opaque::{PromptState, draw_lock_frame, draw_lock_prompt, draw_lock_visuals},
+    wayland::opaque::{
+        PromptState, draw_lock_frame, draw_lock_prompt, draw_lock_status_text, draw_lock_visuals,
+    },
 };
 
 /// Runs the authenticated Luma session locker without a timed bypass.
@@ -656,6 +658,14 @@ impl LockState {
                 self.input.character_count(),
                 prompt_state,
                 &self.input_config,
+            );
+            draw_lock_status_text(
+                canvas,
+                width,
+                height,
+                prompt_state,
+                &self.input_config,
+                &presentation.renderer,
             );
         }
         buffer

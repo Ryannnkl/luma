@@ -203,6 +203,65 @@ pub(crate) fn draw_lock_visuals(
     }
 }
 
+pub(crate) fn draw_lock_status_text(
+    canvas: &mut [u8],
+    width: i32,
+    height: i32,
+    prompt_state: PromptState,
+    config: &InputConfig,
+    renderer: &TextRenderer,
+) {
+    let (Ok(width), Ok(height)) = (usize::try_from(width), usize::try_from(height)) else {
+        return;
+    };
+    if width < 80 || height < 80 || prompt_state == PromptState::Ready {
+        return;
+    }
+
+    let prompt = prompt_rectangle(width, height, config);
+    let ready_background = opaque_over(Rgba::from_config(config.background_color), BACKGROUND);
+    let feedback_background = opaque_over(
+        Rgba::from_config(config.feedback_background_color),
+        BACKGROUND,
+    );
+    let (text, background) = match prompt_state {
+        PromptState::Authenticating => (&config.authenticating_text, ready_background),
+        PromptState::Failure => (&config.failure_text, feedback_background),
+        PromptState::Cooldown => (&config.cooldown_text, feedback_background),
+        PromptState::Ready => return,
+    };
+    fill_rect(
+        canvas,
+        width,
+        height,
+        prompt.x,
+        prompt.y,
+        prompt.width,
+        prompt.height,
+        background,
+    );
+    #[allow(clippy::cast_precision_loss)]
+    let center = (
+        prompt.x as f32 + prompt.width as f32 / 2.0,
+        prompt.y as f32 + prompt.height as f32 / 2.0,
+    );
+    renderer.draw_centered(
+        canvas,
+        width,
+        height,
+        ClipRectangle {
+            x: prompt.x,
+            y: prompt.y,
+            width: prompt.width,
+            height: prompt.height,
+        },
+        center,
+        config.feedback_text_size,
+        text,
+        config.feedback_text_color,
+    );
+}
+
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
@@ -455,7 +514,10 @@ mod tests {
 
     use crate::config::{Color, InputConfig};
 
-    use super::{BACKGROUND, PromptState, Rgba, draw_lock_frame, draw_lock_visuals, opaque_over};
+    use super::{
+        BACKGROUND, PromptState, Rgba, draw_lock_frame, draw_lock_status_text, draw_lock_visuals,
+        opaque_over,
+    };
 
     #[test]
     fn draws_an_opaque_background_for_small_outputs() {
@@ -695,6 +757,38 @@ mod tests {
                 .any(|pixel| pixel != encoded(BACKGROUND))
         );
         assert!(canvas.chunks_exact(4).all(|pixel| pixel[3] == 255));
+    }
+
+    #[test]
+    fn textual_feedback_hides_password_length_and_remains_opaque() {
+        let width = 240;
+        let height = 140;
+        let config = InputConfig::default();
+        let renderer = crate::renderer::TextRenderer::new().expect("embedded font must load");
+        let mut short_password = vec![0; width * height * 4];
+        let mut long_password = vec![0; width * height * 4];
+
+        for (canvas, password_length) in [(&mut short_password, 1), (&mut long_password, 12)] {
+            draw_lock_frame(
+                canvas,
+                240,
+                140,
+                password_length,
+                PromptState::Authenticating,
+                &config,
+            );
+            draw_lock_status_text(
+                canvas,
+                240,
+                140,
+                PromptState::Authenticating,
+                &config,
+                &renderer,
+            );
+        }
+
+        assert_eq!(short_password, long_password);
+        assert!(short_password.chunks_exact(4).all(|pixel| pixel[3] == 255));
     }
 
     fn encoded(color: super::Rgba) -> [u8; 4] {
