@@ -56,5 +56,5 @@ in debug builds. Release builds do not contain its command, timer, or environmen
 variable gate.
 
 Authenticated testing uses `scripts/test-nested-lock.sh`. Its timer is an external
-systemd watchdog that destroys only the nested compositor after 30 seconds; it is
+systemd watchdog that destroys only the nested compositor after 60 seconds; it is
 not an authentication result and never calls Luma's unlock path.

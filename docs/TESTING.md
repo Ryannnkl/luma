@@ -155,7 +155,7 @@ locked.
 
 The runner validates its dependencies and PAM policy, builds the release binary,
 arms an external systemd watchdog, and then launches that binary inside a new
-nested niri. After 30 seconds the watchdog stops `luma-auth-lock.service`, closing
+nested niri. After 60 seconds the watchdog stops `luma-auth-lock.service`, closing
 the entire nested compositor even if Luma's own event loop is stuck. It does not
 unlock Luma and cannot recover a lock started in the primary compositor.
 
@@ -170,7 +170,7 @@ nested niri window. Verify this prompt sequence for an incorrect password:
 
 Confirm that every nested output shows the same state and that output handling
 remains responsive while PAM is running. The watchdog closes the nested window
-automatically after 30 seconds. To close it sooner, run this from an outer-session
+automatically after 60 seconds. To close it sooner, run this from an outer-session
 terminal:
 
 ```sh

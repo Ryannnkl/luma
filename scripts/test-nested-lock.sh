@@ -6,7 +6,7 @@ LOCK_UNIT="luma-auth-lock.service"
 WATCHDOG_UNIT="luma-auth-watchdog"
 WATCHDOG_TIMER="${WATCHDOG_UNIT}.timer"
 WATCHDOG_SERVICE="${WATCHDOG_UNIT}.service"
-WATCHDOG_SECONDS=30
+WATCHDOG_SECONDS=60
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 release_binary="${project_dir}/target/release/luma"

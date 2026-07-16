@@ -111,7 +111,7 @@ The lock accepts input through Wayland, renders its configured clock and optiona
 date, and unlocks only after PAM succeeds. It does not yet provide session
 background capture, blur, the complete real-lock theme, or production integration
 with niri and wlogout. The test runner starts a new nested niri and an external
-30-second watchdog; it never adds a timed unlock to Luma.
+60-second watchdog; it never adds a timed unlock to Luma.
 
 ## Development checks
 

@@ -67,7 +67,7 @@ an authentication error as an unlock authorization.
   not encode the previous password length or distinguish credential denial from
   infrastructure failure.
 - `scripts/test-nested-lock.sh` is outside the runtime trust boundary. Its
-  30-second systemd watchdog stops the named nested niri service rather than
+  60-second systemd watchdog stops the named nested niri service rather than
   sending an unlock request. The production binary contains no corresponding
   timer or environment-variable gate.
 - The real fallback consumes validated `[input]` geometry, limits, colors, and

@@ -84,7 +84,7 @@ through authenticating, failure, and cooldown transitions.
 
 `scripts/test-nested-lock.sh` is the authenticated-test entry point. It builds the
 release binary, requires `LUMA_ALLOW_NESTED_TEST=1`, starts a new nested niri, and
-arms an external 30-second systemd watchdog before launching Luma. Its `--stop`
+arms an external 60-second systemd watchdog before launching Luma. Its `--stop`
 mode must continue to terminate only the named nested test units.
 
 The real opaque fallback consumes the validated `[input]` configuration for
