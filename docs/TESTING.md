@@ -3,14 +3,17 @@
 This guide separates harmless UI testing, isolated protocol testing, and the
 eventual real-session test. Do not skip directly to the last stage.
 
-## Current demo
+## Debug-only demo
 
-The current `--demo` mode is a normal window. It never requests a session lock
-or contacts PAM, and `Escape` closes it:
+The `--demo` mode exists only in debug builds and opens a normal window. It never
+requests a session lock or contacts PAM, and `Escape` closes it:
 
 ```sh
 cargo run -- --demo
 ```
+
+The release binary must reject `--demo`; escape-to-close behavior is not compiled
+into the production locker.
 
 ## Verify TTY recovery first
 

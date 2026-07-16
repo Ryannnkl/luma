@@ -12,7 +12,7 @@ until the release gate is satisfied.
 
 ## Phase 2: demo application
 
-- Add a `--demo` mode that cannot acquire a session lock.
+- Add a debug-only `--demo` mode that cannot acquire a session lock.
 - Render a window with the two-line clock and bottom password indicator.
 - Add theme configuration and responsive output scaling.
 - Use synthetic input only; do not connect demo mode to PAM.

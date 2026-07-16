@@ -7,8 +7,9 @@ Luma is a Rust Wayland client. The first compositor target is niri through
 
 The command paths are intentionally separate:
 
-- `--demo` opens a normal `eframe` window. It never connects to PAM or requests
-  a session lock.
+- `--demo` is compiled only in debug builds and opens a normal `eframe` window.
+  It never connects to PAM or requests a session lock. Release builds exclude the
+  demo module and reject the command.
 - `--lock` is the authenticated path. It loads validated configuration, validates
   `/etc/pam.d/luma`, requests the session lock, and unlocks only after PAM returns
   success. `--config PATH` selects an explicit TOML file.

@@ -9,7 +9,7 @@ Its primary target is niri. Support for other Wayland compositors implementing
 > nested compositor or virtual machine; keep swaylock configured as recovery and
 > do not use Luma as the primary session keybinding yet.
 
-## Current demo
+## Development-only demo
 
 The demo displays:
 
@@ -19,7 +19,7 @@ The demo displays:
 - a bottom input indicator that stores only a character count;
 - explicit demo feedback instead of authentication.
 
-Run it with:
+Run it from a debug build with:
 
 ```sh
 cargo run -- --demo
@@ -27,6 +27,7 @@ cargo run -- --demo
 
 Use `Backspace` to remove input, `Enter` to preview feedback, and `Escape` to
 close the window. Do not type a real password into development builds.
+The release binary does not contain the demo module and rejects `--demo`.
 
 ## Configuration
 
@@ -59,18 +60,17 @@ script uses the default `~/.config/luma/config.toml` path.
 
 The configuration controls:
 
-- window size and maximized state;
 - procedural background colors, dimming, and color spots;
 - clock visibility, normalized position, size, two-line offsets, formats, and colors;
 - optional date visibility, format, position, size, and color;
-- input visibility, position, dimensions, dot behavior, feedback, and colors;
-- demo-label visibility, content, position, dimensions, and colors.
+- input visibility, position, dimensions, dot behavior, feedback, and colors.
 
 Positions use normalized coordinates from `0.0` to `1.0`. Time and date formats
 use Chrono/strftime directives: `%H` is a 24-hour value, `%I` is a 12-hour value,
 `%M` is minutes, and `%p` is AM/PM. Colors accept `#RRGGBB` or `#RRGGBBAA`.
 
-The demo uses every section. The real opaque fallback uses the configured clock,
+The debug-only demo previews these visual sections with a fixed, non-configurable
+development warning. The real opaque fallback uses the configured clock,
 optional date, and `[input]` geometry, limits, colors, duration, and bounded
 authentication animations. It always keeps the authentication prompt visible
 even when `input.enabled` is false. Procedural background settings, session

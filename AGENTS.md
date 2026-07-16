@@ -34,8 +34,9 @@ protocols, beginning with `ext-session-lock-v1`.
   `[input].enabled = false` must never hide the real authentication prompt.
 - Handle outputs added, removed, resized, scaled, or transformed while locked;
   never leave a newly active output uncovered.
-- Keep demo mode separate from real locking. Demo mode must never authenticate a
-  real user or acquire `ext-session-lock-v1`.
+- Keep demo mode behind `debug_assertions` and separate from real locking. Release
+  builds must reject `--demo`. Demo mode must never authenticate a real user or
+  acquire `ext-session-lock-v1`.
 - Test real locking in a nested compositor or virtual machine before testing it in
   the primary desktop session.
 - Keep authenticated-test watchdogs external to Luma and target only the nested
@@ -90,9 +91,9 @@ mode must continue to terminate only the named nested test units.
 The real opaque fallback consumes the validated `[input]` configuration for
 position, dimensions, limits, dot geometry, colors, feedback duration, and
 language-neutral visual feedback. It also renders the configured clock and
-optional date with the embedded software font. `feedback_text` remains demo-only
-metadata; real authentication feedback must remain iconographic and must not
-require localization.
+optional date with the embedded software font. Real authentication feedback must
+remain iconographic and must not require localization. Demo labels and
+escape-to-close behavior must never enter the release configuration schema.
 
 ## Development workflow
 
