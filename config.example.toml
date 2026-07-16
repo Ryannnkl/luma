@@ -72,8 +72,13 @@ empty_dot_color = "#ffffff3e"
 filled_dot_color = "#ecf4f0"
 feedback_background_color = "#265c48d2"
 feedback_text_color = "#bef4d8"
-# Text feedback is currently rendered by the demo only.
+# Shown only by the interactive demo after pressing Enter.
 feedback_text = "DEMO ONLY"
+# Real authentication feedback never reveals why an attempt failed.
+authenticating_text = "VERIFYING..."
+failure_text = "TRY AGAIN"
+cooldown_text = "PLEASE WAIT"
+feedback_text_size = 11.0
 feedback_duration_ms = 2000
 
 [demo_label]

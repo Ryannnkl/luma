@@ -104,6 +104,18 @@ impl Config {
             ));
         }
         validate_text(&self.input.feedback_text, "input.feedback_text", 128)?;
+        validate_text(
+            &self.input.authenticating_text,
+            "input.authenticating_text",
+            128,
+        )?;
+        validate_text(&self.input.failure_text, "input.failure_text", 128)?;
+        validate_text(&self.input.cooldown_text, "input.cooldown_text", 128)?;
+        validate_range(
+            self.input.feedback_text_size,
+            8.0..=128.0,
+            "input.feedback_text_size",
+        )?;
 
         validate_position(self.demo_label.x, self.demo_label.y, "demo_label")?;
         validate_range(self.demo_label.width, 24.0..=2_048.0, "demo_label.width")?;
@@ -328,6 +340,10 @@ pub struct InputConfig {
     pub feedback_background_color: Color,
     pub feedback_text_color: Color,
     pub feedback_text: String,
+    pub authenticating_text: String,
+    pub failure_text: String,
+    pub cooldown_text: String,
+    pub feedback_text_size: f32,
     pub feedback_duration_ms: u64,
 }
 
@@ -350,6 +366,10 @@ impl Default for InputConfig {
             feedback_background_color: Color::rgba(38, 92, 72, 210),
             feedback_text_color: Color::rgb(190, 244, 216),
             feedback_text: "DEMO ONLY".to_owned(),
+            authenticating_text: "VERIFYING...".to_owned(),
+            failure_text: "TRY AGAIN".to_owned(),
+            cooldown_text: "PLEASE WAIT".to_owned(),
+            feedback_text_size: 11.0,
             feedback_duration_ms: 2_000,
         }
     }
