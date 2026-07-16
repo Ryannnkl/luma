@@ -3,6 +3,7 @@ mod cli;
 pub mod config;
 mod demo;
 pub mod input;
+pub mod renderer;
 pub mod state;
 pub mod wayland;
 
