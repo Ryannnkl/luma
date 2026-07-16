@@ -1,4 +1,5 @@
 mod capabilities;
+mod capture;
 mod opaque;
 mod outputs;
 mod smoke;

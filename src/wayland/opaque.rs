@@ -2,7 +2,7 @@ use chrono::{DateTime, Local};
 
 use crate::{
     config::{ClockConfig, Color, DateConfig, InputConfig},
-    renderer::{ClipRectangle, TextRenderer},
+    renderer::{BackgroundImage, ClipRectangle, TextRenderer},
 };
 
 const BACKGROUND: Rgba = Rgba::new(18, 26, 28, 255);
@@ -203,6 +203,55 @@ pub(crate) fn draw_lock_visuals(
     }
 }
 
+pub(crate) fn draw_captured_background(
+    canvas: &mut [u8],
+    width: i32,
+    height: i32,
+    image: &BackgroundImage,
+    dim_color: Color,
+) {
+    let (Ok(width), Ok(height)) = (usize::try_from(width), usize::try_from(height)) else {
+        return;
+    };
+    if width == 0 || height == 0 {
+        return;
+    }
+    let source_width = image.width();
+    let source_height = image.height();
+    let source = image.pixels();
+    let dim = Rgba::from_config(dim_color);
+    let source_is_wider = source_width.saturating_mul(height) > width.saturating_mul(source_height);
+
+    for y in 0..height {
+        for x in 0..width {
+            let (source_x, source_y) = if source_is_wider {
+                let visible_width = width.saturating_mul(source_height) / height;
+                let offset_x = source_width.saturating_sub(visible_width) / 2;
+                (
+                    offset_x + x.saturating_mul(visible_width) / width,
+                    y.saturating_mul(source_height) / height,
+                )
+            } else {
+                let visible_height = height.saturating_mul(source_width) / width;
+                let offset_y = source_height.saturating_sub(visible_height) / 2;
+                (
+                    x.saturating_mul(source_width) / width,
+                    offset_y + y.saturating_mul(visible_height) / height,
+                )
+            };
+            let source_index = source_y
+                .min(source_height.saturating_sub(1))
+                .saturating_mul(source_width)
+                .saturating_add(source_x.min(source_width.saturating_sub(1)))
+                .saturating_mul(4);
+            let Some(pixel) = source.get(source_index..source_index.saturating_add(4)) else {
+                continue;
+            };
+            set_pixel(canvas, width, x, y, opaque_over(dim, read_pixel(pixel)));
+        }
+    }
+}
+
 pub(crate) fn draw_lock_visual_feedback(
     canvas: &mut [u8],
     width: i32,
@@ -238,9 +287,8 @@ pub(crate) fn draw_lock_visual_feedback(
             );
         }
         PromptState::Failure => {
-            fill_prompt(canvas, width, height, prompt, BACKGROUND);
-            let shifted = shifted_prompt(prompt, width, frame);
-            fill_prompt(canvas, width, height, shifted, feedback_background);
+            fill_prompt(canvas, width, height, prompt, feedback_background);
+            let shifted = shifted_error_rectangle(prompt, frame);
             let accent = opaque_over(Rgba::from_config(config.error_color), feedback_background);
             draw_border(canvas, width, height, shifted, accent);
             draw_cross(canvas, width, height, shifted, accent);
@@ -354,18 +402,21 @@ fn draw_cooldown_dots(
     }
 }
 
-fn shifted_prompt(prompt: Rectangle, width: usize, frame: u64) -> Rectangle {
+fn shifted_error_rectangle(prompt: Rectangle, frame: u64) -> Rectangle {
     const OFFSETS: [isize; 8] = [0, -4, 4, -3, 3, -1, 1, 0];
     let index = usize::try_from(frame)
         .unwrap_or(OFFSETS.len())
         .min(OFFSETS.len().saturating_sub(1));
-    let maximum_x = width.saturating_sub(prompt.width);
+    let inset = 5_usize.min(prompt.width / 4);
     Rectangle {
         x: prompt
             .x
+            .saturating_add(inset)
             .saturating_add_signed(OFFSETS[index])
-            .min(maximum_x),
-        ..prompt
+            .max(prompt.x),
+        y: prompt.y.saturating_add(2),
+        width: prompt.width.saturating_sub(inset.saturating_mul(2)),
+        height: prompt.height.saturating_sub(4),
     }
 }
 
@@ -695,15 +746,26 @@ fn write_pixel(pixel: &mut [u8], color: Rgba) {
     pixel.copy_from_slice(&[color.alpha, color.red, color.green, color.blue]);
 }
 
+fn read_pixel(pixel: &[u8]) -> Rgba {
+    #[cfg(target_endian = "little")]
+    return Rgba::new(pixel[2], pixel[1], pixel[0], pixel[3]);
+
+    #[cfg(target_endian = "big")]
+    return Rgba::new(pixel[1], pixel[2], pixel[3], pixel[0]);
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Local, TimeZone};
 
-    use crate::config::{Color, InputConfig};
+    use crate::{
+        config::{Color, InputConfig},
+        renderer::BackgroundImage,
+    };
 
     use super::{
-        BACKGROUND, PromptState, Rgba, draw_lock_frame, draw_lock_visual_feedback,
-        draw_lock_visuals, opaque_over,
+        BACKGROUND, PromptState, Rgba, draw_captured_background, draw_lock_frame,
+        draw_lock_visual_feedback, draw_lock_visuals, opaque_over,
     };
 
     #[test]
@@ -943,6 +1005,22 @@ mod tests {
                 .chunks_exact(4)
                 .any(|pixel| pixel != encoded(BACKGROUND))
         );
+        assert!(canvas.chunks_exact(4).all(|pixel| pixel[3] == 255));
+    }
+
+    #[test]
+    fn draws_and_dims_an_opaque_captured_background() {
+        let source_color = Rgba::new(120, 80, 40, 255);
+        let source = encoded(source_color).repeat(4);
+        let image = BackgroundImage::from_argb8888(2, 2, 8, &source, false)
+            .expect("test capture must be valid");
+        let mut canvas = vec![0; 4 * 4 * 4];
+        let dim = Color::rgba(0, 0, 0, 128);
+
+        draw_captured_background(&mut canvas, 4, 4, &image, dim);
+
+        let expected = encoded(opaque_over(Rgba::from_config(dim), source_color));
+        assert!(canvas.chunks_exact(4).all(|pixel| pixel == expected));
         assert!(canvas.chunks_exact(4).all(|pixel| pixel[3] == 255));
     }
 

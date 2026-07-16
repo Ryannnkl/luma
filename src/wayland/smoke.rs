@@ -36,15 +36,17 @@ use wayland_client::{
 
 use crate::{
     auth::worker::{AuthenticationCompletion, AuthenticationWorker},
-    config::{ClockConfig, Config, DateConfig, InputConfig},
+    config::{ClockConfig, Color, Config, DateConfig, InputConfig},
     input::InputState,
     renderer::TextRenderer,
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
     wayland::opaque::{
-        PromptState, draw_lock_frame, draw_lock_prompt, draw_lock_visual_feedback,
-        draw_lock_visuals,
+        PromptState, draw_captured_background, draw_lock_frame, draw_lock_prompt,
+        draw_lock_visual_feedback, draw_lock_visuals,
     },
 };
+
+use super::capture::{CapturedOutput, capture_outputs};
 
 /// Runs the authenticated Luma session locker without a timed bypass.
 ///
@@ -53,10 +55,18 @@ use crate::{
 /// Returns an error when critical Wayland resources are unavailable, the compositor rejects the
 /// lock, or the authenticated unlock request cannot be delivered.
 pub fn run_authenticated(config: Config) -> Result<(), LockError> {
+    let captured_outputs = if config.background.capture_enabled {
+        capture_outputs(config.background.blur_radius)
+            .map_err(|error| LockError::Capture(error.to_string()))?
+    } else {
+        Vec::new()
+    };
     let presentation = LockPresentation {
         renderer: TextRenderer::new().map_err(|error| LockError::Font(error.to_string()))?,
         clock: config.clock,
         date: config.date,
+        dim_color: config.background.dim_color,
+        captured_outputs,
     };
     let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
     let (globals, event_queue) =
@@ -161,6 +171,7 @@ pub enum LockError {
     Lock(String),
     Buffer(String),
     Font(String),
+    Capture(String),
     AuthenticationWorker(std::io::Error),
     EventLoop(String),
     EventSource(&'static str),
@@ -182,6 +193,9 @@ impl fmt::Display for LockError {
             Self::Lock(source) => write!(formatter, "could not request the session lock: {source}"),
             Self::Buffer(source) => write!(formatter, "could not create the lock buffer: {source}"),
             Self::Font(source) => write!(formatter, "could not load the lock font: {source}"),
+            Self::Capture(source) => {
+                write!(formatter, "could not capture lock background: {source}")
+            }
             Self::AuthenticationWorker(source) => {
                 write!(
                     formatter,
@@ -232,6 +246,8 @@ struct LockPresentation {
     renderer: TextRenderer,
     clock: ClockConfig,
     date: DateConfig,
+    dim_color: Color,
+    captured_outputs: Vec<CapturedOutput>,
 }
 
 struct LockSurfaceState {
@@ -649,6 +665,7 @@ impl LockState {
         let width = surface_state.width;
         let height = surface_state.height;
         let surface = surface_state.surface.clone();
+        let output = surface_state.output.clone();
         if width <= 0 || height <= 0 {
             return Ok(());
         }
@@ -673,6 +690,21 @@ impl LockState {
             &self.input_config,
         );
         if let Some(presentation) = &self.presentation {
+            let output_name = self.output_state.info(&output).and_then(|info| info.name);
+            if let Some(captured) = output_name.as_deref().and_then(|name| {
+                presentation
+                    .captured_outputs
+                    .iter()
+                    .find(|captured| captured.name == name)
+            }) {
+                draw_captured_background(
+                    canvas,
+                    width,
+                    height,
+                    &captured.image,
+                    presentation.dim_color,
+                );
+            }
             draw_lock_visuals(
                 canvas,
                 width,
