@@ -1,4 +1,9 @@
-use crate::config::{Color, InputConfig};
+use chrono::{DateTime, Local};
+
+use crate::{
+    config::{ClockConfig, Color, DateConfig, InputConfig},
+    renderer::{ClipRectangle, TextRenderer},
+};
 
 const BACKGROUND: Rgba = Rgba::new(18, 26, 28, 255);
 
@@ -62,6 +67,17 @@ pub(crate) fn draw_lock_frame(
     };
 
     fill(canvas, BACKGROUND);
+    draw_lock_prompt(canvas, width, height, password_length, prompt_state, config);
+}
+
+pub(crate) fn draw_lock_prompt(
+    canvas: &mut [u8],
+    width: usize,
+    height: usize,
+    password_length: usize,
+    prompt_state: PromptState,
+    config: &InputConfig,
+) {
     if width < 80 || height < 80 {
         return;
     }
@@ -118,6 +134,72 @@ pub(crate) fn draw_lock_frame(
             );
             draw_centered_dots(canvas, width, height, prompt, color, config);
         }
+    }
+}
+
+/// Draws configured time and date text over the opaque fallback.
+pub(crate) fn draw_lock_visuals(
+    canvas: &mut [u8],
+    width: i32,
+    height: i32,
+    clock: &ClockConfig,
+    date: &DateConfig,
+    renderer: &TextRenderer,
+    now: DateTime<Local>,
+) {
+    let (Ok(width), Ok(height)) = (usize::try_from(width), usize::try_from(height)) else {
+        return;
+    };
+    let clip = ClipRectangle {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
+
+    if clock.enabled {
+        #[allow(clippy::cast_precision_loss)]
+        let clock_size = (height as f32 * clock.size_ratio).clamp(clock.min_size, clock.max_size);
+        let line_gap = clock_size * clock.line_gap_ratio;
+        #[allow(clippy::cast_precision_loss)]
+        let center = (clock.x * width as f32, clock.y * height as f32);
+        let hour = now.format(&clock.hour_format).to_string();
+        let minute = now.format(&clock.minute_format).to_string();
+        renderer.draw_centered(
+            canvas,
+            width,
+            height,
+            clip,
+            (
+                center.0 + clock_size * clock.hour_offset_x_ratio,
+                center.1 - line_gap * 0.55,
+            ),
+            clock_size,
+            &hour,
+            clock.hour_color,
+        );
+        renderer.draw_centered(
+            canvas,
+            width,
+            height,
+            clip,
+            (
+                center.0 + clock_size * clock.minute_offset_x_ratio,
+                center.1 + line_gap * 0.55,
+            ),
+            clock_size,
+            &minute,
+            clock.minute_color,
+        );
+    }
+
+    if date.enabled {
+        #[allow(clippy::cast_precision_loss)]
+        let center = (date.x * width as f32, date.y * height as f32);
+        let formatted = now.format(&date.format).to_string();
+        renderer.draw_centered(
+            canvas, width, height, clip, center, date.size, &formatted, date.color,
+        );
     }
 }
 
@@ -369,9 +451,11 @@ fn write_pixel(pixel: &mut [u8], color: Rgba) {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{Local, TimeZone};
+
     use crate::config::{Color, InputConfig};
 
-    use super::{BACKGROUND, PromptState, Rgba, draw_lock_frame, opaque_over};
+    use super::{BACKGROUND, PromptState, Rgba, draw_lock_frame, draw_lock_visuals, opaque_over};
 
     #[test]
     fn draws_an_opaque_background_for_small_outputs() {
@@ -585,6 +669,32 @@ mod tests {
         draw_lock_frame(&mut canvas, -1, 4, 3, PromptState::Failure, &config);
 
         assert_eq!(canvas, vec![0; 16]);
+    }
+
+    #[test]
+    fn draws_configured_clock_and_date() {
+        let width = 400;
+        let height = 300;
+        let mut canvas = encoded(BACKGROUND).repeat(width * height);
+        let renderer = crate::renderer::TextRenderer::new().expect("embedded font must load");
+        let clock = crate::config::ClockConfig::default();
+        let date = crate::config::DateConfig {
+            enabled: true,
+            ..crate::config::DateConfig::default()
+        };
+        let now = Local
+            .with_ymd_and_hms(2026, 7, 16, 19, 41, 0)
+            .single()
+            .expect("test date must be valid");
+
+        draw_lock_visuals(&mut canvas, 400, 300, &clock, &date, &renderer, now);
+
+        assert!(
+            canvas
+                .chunks_exact(4)
+                .any(|pixel| pixel != encoded(BACKGROUND))
+        );
+        assert!(canvas.chunks_exact(4).all(|pixel| pixel[3] == 255));
     }
 
     fn encoded(color: super::Rgba) -> [u8; 4] {

@@ -36,10 +36,11 @@ use wayland_client::{
 
 use crate::{
     auth::worker::{AuthenticationCompletion, AuthenticationWorker},
-    config::{Config, InputConfig},
+    config::{ClockConfig, Config, DateConfig, InputConfig},
     input::InputState,
+    renderer::TextRenderer,
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
-    wayland::opaque::{PromptState, draw_lock_frame},
+    wayland::opaque::{PromptState, draw_lock_frame, draw_lock_prompt, draw_lock_visuals},
 };
 
 /// Runs the authenticated Luma session locker without a timed bypass.
@@ -49,6 +50,11 @@ use crate::{
 /// Returns an error when critical Wayland resources are unavailable, the compositor rejects the
 /// lock, or the authenticated unlock request cannot be delivered.
 pub fn run_authenticated(config: Config) -> Result<(), LockError> {
+    let presentation = LockPresentation {
+        renderer: TextRenderer::new().map_err(|error| LockError::Font(error.to_string()))?,
+        clock: config.clock,
+        date: config.date,
+    };
     let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
@@ -56,7 +62,13 @@ pub fn run_authenticated(config: Config) -> Result<(), LockError> {
     let (completion_sender, completion_channel) = channel::channel();
     let authentication_worker =
         AuthenticationWorker::spawn(completion_sender).map_err(LockError::AuthenticationWorker)?;
-    let mut state = LockState::new(&globals, &qh, Some(authentication_worker), config.input)?;
+    let mut state = LockState::new(
+        &globals,
+        &qh,
+        Some(authentication_worker),
+        config.input,
+        Some(presentation),
+    )?;
     if state.output_state.outputs().next().is_none() {
         return Err(LockError::NoOutputs);
     }
@@ -82,11 +94,12 @@ pub fn run_authenticated(config: Config) -> Result<(), LockError> {
     state.session_lock = Some(lock);
 
     while !state.finished {
-        let timeout = state.authentication_timeout();
+        let timeout = state.event_timeout();
         event_loop
             .dispatch(timeout, &mut state)
             .map_err(|error| LockError::EventLoop(error.to_string()))?;
         state.advance_authentication();
+        state.advance_visuals();
     }
 
     if state.unlock_authorized {
@@ -111,7 +124,7 @@ pub fn run(timeout: Duration) -> Result<(), LockError> {
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
-    let mut state = LockState::new(&globals, &qh, None, InputConfig::default())?;
+    let mut state = LockState::new(&globals, &qh, None, InputConfig::default(), None)?;
     let lock = state
         .lock_manager
         .lock(&qh)
@@ -144,6 +157,7 @@ pub enum LockError {
     Bind(String),
     Lock(String),
     Buffer(String),
+    Font(String),
     AuthenticationWorker(std::io::Error),
     EventLoop(String),
     EventSource(&'static str),
@@ -164,6 +178,7 @@ impl fmt::Display for LockError {
             Self::Bind(source) => write!(formatter, "could not bind a lock dependency: {source}"),
             Self::Lock(source) => write!(formatter, "could not request the session lock: {source}"),
             Self::Buffer(source) => write!(formatter, "could not create the lock buffer: {source}"),
+            Self::Font(source) => write!(formatter, "could not load the lock font: {source}"),
             Self::AuthenticationWorker(source) => {
                 write!(
                     formatter,
@@ -191,6 +206,8 @@ struct LockState {
     keyboard: Option<wayland_client::protocol::wl_keyboard::WlKeyboard>,
     input: InputState,
     input_config: InputConfig,
+    presentation: Option<LockPresentation>,
+    next_visual_redraw: Option<Instant>,
     authentication: Option<AuthenticationController>,
     shm_state: Shm,
     pool: SlotPool,
@@ -207,6 +224,12 @@ struct AuthenticationController {
     worker: AuthenticationWorker,
 }
 
+struct LockPresentation {
+    renderer: TextRenderer,
+    clock: ClockConfig,
+    date: DateConfig,
+}
+
 struct LockSurfaceState {
     output: wl_output::WlOutput,
     surface: SessionLockSurface,
@@ -221,6 +244,7 @@ impl LockState {
         qh: &QueueHandle<Self>,
         authentication_worker: Option<AuthenticationWorker>,
         input_config: InputConfig,
+        presentation: Option<LockPresentation>,
     ) -> Result<Self, LockError> {
         let compositor = globals
             .bind(qh, 1..=6, ())
@@ -243,6 +267,11 @@ impl LockState {
             keyboard: None,
             input: InputState::new(max_characters),
             input_config,
+            next_visual_redraw: presentation
+                .as_ref()
+                .filter(|presentation| presentation.clock.enabled || presentation.date.enabled)
+                .map(|_| Instant::now() + Duration::from_secs(1)),
+            presentation,
             authentication: authentication_worker.map(|worker| AuthenticationController {
                 state: AuthenticationState::new(authentication_policy),
                 worker,
@@ -536,12 +565,19 @@ impl LockState {
         self.redraw_input_indicator();
     }
 
-    fn authentication_timeout(&self) -> Option<Duration> {
-        self.authentication
-            .as_ref()?
-            .state
-            .next_deadline()
-            .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+    fn event_timeout(&self) -> Option<Duration> {
+        let authentication = self
+            .authentication
+            .as_ref()
+            .and_then(|authentication| authentication.state.next_deadline())
+            .map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        let visuals = self
+            .next_visual_redraw
+            .map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        match (authentication, visuals) {
+            (Some(authentication), Some(visuals)) => Some(authentication.min(visuals)),
+            (authentication, visuals) => authentication.or(visuals),
+        }
     }
 
     fn advance_authentication(&mut self) {
@@ -553,6 +589,18 @@ impl LockState {
         if authentication.state.phase() != previous_phase {
             self.redraw_input_indicator();
         }
+    }
+
+    fn advance_visuals(&mut self) {
+        let Some(deadline) = self.next_visual_redraw else {
+            return;
+        };
+        let now = Instant::now();
+        if now < deadline {
+            return;
+        }
+        self.next_visual_redraw = Some(now + Duration::from_secs(1));
+        self.redraw_input_indicator();
     }
 
     fn redraw_input_indicator(&mut self) {
@@ -591,6 +639,25 @@ impl LockState {
             prompt_state,
             &self.input_config,
         );
+        if let Some(presentation) = &self.presentation {
+            draw_lock_visuals(
+                canvas,
+                width,
+                height,
+                &presentation.clock,
+                &presentation.date,
+                &presentation.renderer,
+                chrono::Local::now(),
+            );
+            draw_lock_prompt(
+                canvas,
+                usize::try_from(width).unwrap_or_default(),
+                usize::try_from(height).unwrap_or_default(),
+                self.input.character_count(),
+                prompt_state,
+                &self.input_config,
+            );
+        }
         buffer
             .attach_to(surface.wl_surface())
             .map_err(|error| LockError::Buffer(error.to_string()))?;
