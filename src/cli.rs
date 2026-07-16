@@ -4,10 +4,11 @@ use std::{fmt, path::PathBuf};
 const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma --lock [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (debug builds, nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo or --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[cfg(not(debug_assertions))]
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma --lock [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --demo or --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --lock [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
+    #[cfg(debug_assertions)]
     Demo {
         config: Option<PathBuf>,
     },
@@ -42,13 +43,15 @@ where
         return Ok(Command::Help);
     };
 
-    if matches!(argument.as_str(), "--demo" | "--lock") {
+    if argument == "--lock" {
         let config = parse_config_options(arguments)?;
-        return Ok(if argument == "--demo" {
-            Command::Demo { config }
-        } else {
-            Command::Lock { config }
-        });
+        return Ok(Command::Lock { config });
+    }
+
+    #[cfg(debug_assertions)]
+    if argument == "--demo" {
+        let config = parse_config_options(arguments)?;
+        return Ok(Command::Demo { config });
     }
 
     let command = match argument.as_str() {
@@ -116,11 +119,20 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn recognizes_demo_mode() {
         assert_eq!(
             parse(["--demo".to_owned()]),
             Ok(Command::Demo { config: None })
         );
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn release_build_rejects_demo_mode() {
+        let error = parse(["--demo".to_owned()]).expect_err("demo must be debug-only");
+
+        assert!(error.to_string().contains("unknown argument `--demo`"));
     }
 
     #[test]
@@ -148,6 +160,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn accepts_custom_config_path() {
         assert_eq!(
             parse([
@@ -184,15 +197,15 @@ mod tests {
 
     #[test]
     fn rejects_trailing_arguments() {
-        let error = parse(["--demo".to_owned(), "extra".to_owned()])
-            .expect_err("demo mode accepts no trailing arguments");
+        let error = parse(["--lock".to_owned(), "extra".to_owned()])
+            .expect_err("lock mode accepts no trailing arguments");
 
         assert!(error.to_string().contains("unknown argument `extra`"));
     }
 
     #[test]
     fn rejects_config_without_path() {
-        let error = parse(["--demo".to_owned(), "--config".to_owned()])
+        let error = parse(["--lock".to_owned(), "--config".to_owned()])
             .expect_err("config requires a path");
 
         assert!(error.to_string().contains("missing path after `--config`"));

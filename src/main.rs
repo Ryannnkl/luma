@@ -1,6 +1,7 @@
 pub mod auth;
 mod cli;
 pub mod config;
+#[cfg(debug_assertions)]
 mod demo;
 pub mod input;
 pub mod renderer;
@@ -16,6 +17,7 @@ use cli::Command;
 
 fn main() -> ExitCode {
     match cli::parse(env::args().skip(1)) {
+        #[cfg(debug_assertions)]
         Ok(Command::Demo {
             config: config_path,
         }) => {
