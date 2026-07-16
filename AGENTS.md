@@ -88,9 +88,11 @@ arms an external 30-second systemd watchdog before launching Luma. Its `--stop`
 mode must continue to terminate only the named nested test units.
 
 The real opaque fallback consumes the validated `[input]` configuration for
-position, dimensions, limits, dot geometry, colors, and feedback duration.
-`feedback_text` remains presentation-only metadata until a reviewed text renderer
-is connected; never render configuration text through an unbounded fallback path.
+position, dimensions, limits, dot geometry, colors, feedback duration, and
+bounded status text. It also renders the configured clock and optional date with
+the embedded software font. `feedback_text` remains demo-only metadata; the real
+lock uses `authenticating_text`, `failure_text`, and `cooldown_text`. Keep all
+configured text validated and clipped to its assigned surface region.
 
 ## Development workflow
 

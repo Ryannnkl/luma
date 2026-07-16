@@ -163,9 +163,9 @@ Type the normal user password inside the nested lock and press Enter. An
 incorrect password must leave it locked; a correct password must unlock only the
 nested niri window. Verify this prompt sequence for an incorrect password:
 
-1. The password dots become three bright dots while PAM runs.
-2. A generic warning marker appears without showing the previous password length.
-3. Three attenuated dots remain during cooldown; input is intentionally ignored.
+1. The password dots become the configured generic authenticating text while PAM runs.
+2. Generic failure text appears without showing the previous password length.
+3. Generic cooldown text remains while input is intentionally ignored.
 4. The neutral password dots return when another attempt is allowed.
 
 Confirm that every nested output shows the same state and that output handling

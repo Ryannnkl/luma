@@ -61,10 +61,11 @@ an authentication error as an unlock authorization.
 - The production path contains no timer, environment-variable unlock gate, or
   secret bypass. The smoke timer is removed from release builds with
   `debug_assertions`.
-- `src/wayland/opaque.rs` maps authentication phases to four opaque prompt states:
-  ready password dots, three-dot authenticating feedback, one generic failure
-  marker, and an attenuated cooldown indicator. Failure frames do not encode the
-  previous password length.
+- `src/wayland/opaque.rs` maps authentication phases to four opaque prompt states.
+  Ready renders password dots; authenticating, failure, and cooldown render
+  bounded generic text through the embedded software font. Feedback frames do
+  not encode the previous password length or distinguish credential denial from
+  infrastructure failure.
 - `scripts/test-nested-lock.sh` is outside the runtime trust boundary. Its
   30-second systemd watchdog stops the named nested niri service rather than
   sending an unlock request. The production binary contains no corresponding
@@ -72,6 +73,9 @@ an authentication error as an unlock authorization.
 - The real fallback consumes validated `[input]` geometry, limits, colors, and
   feedback duration. Semi-transparent configured colors are composited over the
   opaque fallback; their alpha is never copied to the lock-surface frame.
+- Clock and optional date text use a validated embedded font and are redrawn once
+  per second. Font loading happens before the session lock is requested, and the
+  authentication prompt is rendered last so configured text cannot cover it.
 
 ## Authentication state contract
 
@@ -99,15 +103,14 @@ worker completion channel wakes the loop immediately when PAM finishes.
 
 These are known follow-up tasks, not reasons to bypass the safety rules:
 
-- Authentication prompt geometry and colors are configurable. Feedback text,
-  animation, and renderer-backed typography are not connected to the real lock
-  yet; the fallback uses bounded symbols instead.
+- Authentication prompt geometry, colors, and bounded status text are
+  configurable. Prompt animation is not connected to the real lock yet.
 - A PAM transaction has no cancellation timeout yet. A PAM backend that never
   returns leaves the attempt authenticating, although Wayland rendering and
   output handling continue to run.
-- The real lock currently renders the opaque software fallback only. Background
-  capture, blur, clock typography, theming of the real lock, and animation are
-  not connected to the lock surfaces yet.
+- The real lock currently renders the opaque software fallback with clock and
+  optional date typography. Background capture, blur, full theming, and animation
+  are not connected to the lock surfaces yet.
 - Shared-memory allocation and attach failures need a reviewed recovery path
   that preserves an opaque usable prompt before primary-session use.
 - Output hotplug is handled, but repeated scale, transform, suspend/resume, and

@@ -44,12 +44,12 @@ completion wakes the Wayland event loop through a registered `calloop` channel.
 An authentication panic is contained as an infrastructure failure and does not
 authorize unlocking.
 
-While PAM runs, the prompt replaces password-length dots with a generic three-dot
-indicator. Credential denial and infrastructure failure both render the same
-warning marker, followed by an attenuated cooldown indicator. These feedback
-frames do not reveal the submitted password length or failure category. Prompt
-geometry, dot behavior, colors, and feedback duration come from the validated
-`[input]` configuration. Text feedback is not rendered by the real fallback yet.
+While PAM runs, the prompt replaces password-length dots with bounded generic
+status text. Credential denial and infrastructure failure both render the same
+failure text, followed by generic cooldown text. These feedback frames do not
+reveal the submitted password length or failure category. Prompt geometry, dot
+behavior, colors, duration, text size, and status strings come from the validated
+`[input]` configuration and are clipped to the prompt rectangle.
 
 The bounded `--lock-smoke` command remains disconnected from PAM and exists only
 in debug builds. Release builds do not contain its command, timer, or environment

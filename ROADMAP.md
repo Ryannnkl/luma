@@ -43,8 +43,9 @@ until the release gate is satisfied.
 ## Phase 5: visual design
 
 - [x] Connect validated input geometry and colors to the opaque real-lock prompt.
+- [x] Render clock, optional date, and bounded prompt feedback in software.
 - Capture the current session before acquiring the lock.
-- Add GPU blur, dimming, clock typography, prompt feedback, and subtle animation.
+- Add GPU blur, dimming, full typography, and subtle animation.
 - Preserve the opaque software fallback when capture or GPU rendering fails.
 - Support multiple monitors without exposing uncaptured session contents.
 

@@ -70,11 +70,11 @@ Positions use normalized coordinates from `0.0` to `1.0`. Time and date formats
 use Chrono/strftime directives: `%H` is a 24-hour value, `%I` is a 12-hour value,
 `%M` is minutes, and `%p` is AM/PM. Colors accept `#RRGGBB` or `#RRGGBBAA`.
 
-The demo uses every section. The real opaque fallback currently uses `[input]`
-position, dimensions, character and dot limits, dot geometry, colors, and
-feedback duration. It always keeps the authentication prompt visible even when
-`input.enabled` is false, and it does not render `feedback_text` yet. Background,
-blur, clock, and date configuration are not connected to real lock surfaces.
+The demo uses every section. The real opaque fallback uses the configured clock,
+optional date, and `[input]` geometry, limits, colors, duration, and bounded
+authentication status text. It always keeps the authentication prompt visible
+even when `input.enabled` is false. Procedural background settings, session
+capture, and blur are not connected to real lock surfaces yet.
 
 ## Wayland capability check
 
@@ -107,11 +107,11 @@ then run the authenticated path only by following the watchdog procedure in
 LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
 
-The lock accepts input through Wayland and unlocks only after PAM succeeds. It
-does not yet provide the final blurred background, clock, complete real-lock
-theme, or production integration with niri and wlogout. The test runner starts a
-new nested niri and an external 30-second watchdog; it never adds a timed unlock
-to Luma.
+The lock accepts input through Wayland, renders its configured clock and optional
+date, and unlocks only after PAM succeeds. It does not yet provide session
+background capture, blur, the complete real-lock theme, or production integration
+with niri and wlogout. The test runner starts a new nested niri and an external
+30-second watchdog; it never adds a timed unlock to Luma.
 
 ## Development checks
 
