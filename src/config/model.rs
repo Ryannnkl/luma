@@ -7,7 +7,6 @@ use super::Color;
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    pub window: WindowConfig,
     pub background: BackgroundConfig,
     pub clock: ClockConfig,
     pub date: DateConfig,
@@ -22,9 +21,6 @@ impl Config {
     /// Returns the first field that is non-finite, outside its supported range,
     /// internally inconsistent, empty, or excessively long.
     pub fn validate(&self) -> Result<(), ValidationError> {
-        validate_range(self.window.width, 320.0..=16_384.0, "window.width")?;
-        validate_range(self.window.height, 240.0..=16_384.0, "window.height")?;
-
         if self.background.spots.len() > 32 {
             return Err(ValidationError::new(
                 "background.spots",
@@ -165,24 +161,6 @@ fn validate_text(value: &str, field: &'static str, max: usize) -> Result<(), Val
         Err(ValidationError::new(field, "is too long"))
     } else {
         Ok(())
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct WindowConfig {
-    pub width: f32,
-    pub height: f32,
-    pub maximized: bool,
-}
-
-impl Default for WindowConfig {
-    fn default() -> Self {
-        Self {
-            width: 1280.0,
-            height: 720.0,
-            maximized: true,
-        }
     }
 }
 

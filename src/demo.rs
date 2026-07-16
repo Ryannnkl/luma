@@ -12,9 +12,9 @@ pub fn run(config: Config) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Luma Demo")
-            .with_inner_size([config.window.width, config.window.height])
+            .with_inner_size([1280.0, 720.0])
             .with_min_inner_size([640.0, 480.0])
-            .with_maximized(config.window.maximized),
+            .with_maximized(true),
         ..Default::default()
     };
 
