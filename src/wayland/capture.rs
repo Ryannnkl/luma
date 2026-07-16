@@ -5,15 +5,12 @@ use smithay_client_toolkit::{
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
-    shm::{
-        Shm, ShmHandler,
-        slot::{Buffer, SlotPool},
-    },
+    shm::{Shm, ShmHandler, raw::RawPool},
 };
 use wayland_client::{
-    Connection, Dispatch, Proxy, QueueHandle, WEnum, delegate_noop,
+    Connection, Dispatch, QueueHandle, WEnum, delegate_noop,
     globals::{GlobalError, registry_queue_init},
-    protocol::{wl_output, wl_shm},
+    protocol::{wl_buffer, wl_output, wl_shm},
 };
 use wayland_protocols_wlr::screencopy::v1::client::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
@@ -37,15 +34,13 @@ pub(crate) fn capture_outputs(blur_radius: u32) -> Result<Vec<CapturedOutput>, C
     let qh = event_queue.handle();
     let shm = Shm::bind(&globals, &qh).map_err(|error| CaptureError::Bind(error.to_string()))?;
     let manager = globals
-        .bind(&qh, 1..=3, ())
+        .bind(&qh, 1..=1, ())
         .map_err(|error| CaptureError::Bind(error.to_string()))?;
-    let pool = SlotPool::new(1, &shm).map_err(|error| CaptureError::Buffer(error.to_string()))?;
     let mut state = CaptureState {
         registry_state: RegistryState::new(&globals),
         output_state: OutputState::new(&globals, &qh),
         shm,
         manager,
-        pool,
         pending: Vec::new(),
         completed: Vec::new(),
         failure: None,
@@ -72,6 +67,7 @@ pub(crate) fn capture_outputs(blur_radius: u32) -> Result<Vec<CapturedOutput>, C
             name,
             frame,
             parameters: None,
+            pool: None,
             buffer: None,
             y_inverted: false,
             finished: false,
@@ -97,7 +93,6 @@ struct CaptureState {
     output_state: OutputState,
     shm: Shm,
     manager: ZwlrScreencopyManagerV1,
-    pool: SlotPool,
     pending: Vec<PendingCapture>,
     completed: Vec<CapturedOutput>,
     failure: Option<CaptureError>,
@@ -109,7 +104,8 @@ struct PendingCapture {
     name: String,
     frame: ZwlrScreencopyFrameV1,
     parameters: Option<BufferParameters>,
-    buffer: Option<Buffer>,
+    pool: Option<RawPool>,
+    buffer: Option<wl_buffer::WlBuffer>,
     y_inverted: bool,
     finished: bool,
 }
@@ -123,7 +119,7 @@ struct BufferParameters {
 }
 
 impl CaptureState {
-    fn start_copy(&mut self, index: usize) {
+    fn start_copy(&mut self, index: usize, queue_handle: &QueueHandle<Self>) {
         let Some(pending) = self.pending.get_mut(index) else {
             self.failure = Some(CaptureError::Protocol("unknown capture frame"));
             return;
@@ -159,18 +155,33 @@ impl CaptureState {
             ));
             return;
         };
-        match self
-            .pool
-            .create_buffer(width, height, stride, parameters.format)
-        {
-            Ok((buffer, canvas)) => {
-                canvas.fill(0);
-                pending.frame.copy(buffer.wl_buffer());
-                pending.buffer = Some(buffer);
-                self.allocated_bytes = self.allocated_bytes.saturating_add(buffer_bytes);
+        let Ok(buffer_size) = usize::try_from(buffer_bytes) else {
+            self.failure = Some(CaptureError::Buffer(
+                "capture buffer exceeds platform limits".to_owned(),
+            ));
+            return;
+        };
+        let mut pool = match RawPool::new(buffer_size, &self.shm) {
+            Ok(pool) => pool,
+            Err(error) => {
+                self.failure = Some(CaptureError::Buffer(error.to_string()));
+                return;
             }
-            Err(error) => self.failure = Some(CaptureError::Buffer(error.to_string())),
-        }
+        };
+        pool.mmap().fill(0);
+        let buffer = pool.create_buffer(
+            0,
+            width,
+            height,
+            stride,
+            parameters.format,
+            (),
+            queue_handle,
+        );
+        pending.frame.copy(&buffer);
+        pending.pool = Some(pool);
+        pending.buffer = Some(buffer);
+        self.allocated_bytes = self.allocated_bytes.saturating_add(buffer_bytes);
     }
 
     fn finish(&mut self, index: usize) {
@@ -185,21 +196,19 @@ impl CaptureState {
             self.failure = Some(CaptureError::UnsupportedFormat);
             return;
         };
-        let Some(buffer) = pending.buffer.as_ref() else {
+        let Some(buffer) = pending.buffer.take() else {
             self.failure = Some(CaptureError::Incomplete);
             return;
         };
-        let Some(canvas) = self.pool.canvas(buffer) else {
-            self.failure = Some(CaptureError::Buffer(
-                "capture buffer is still busy".to_owned(),
-            ));
+        let Some(pool) = pending.pool.as_mut() else {
+            self.failure = Some(CaptureError::Incomplete);
             return;
         };
         match BackgroundImage::from_argb8888(
             parameters.width,
             parameters.height,
             parameters.stride,
-            canvas,
+            pool.mmap(),
             pending.y_inverted,
         ) {
             Ok(mut image) => {
@@ -209,6 +218,7 @@ impl CaptureState {
                     image,
                 });
                 pending.finished = true;
+                buffer.destroy();
                 pending.frame.destroy();
             }
             Err(error) => self.failure = Some(CaptureError::Image(error)),
@@ -263,11 +273,11 @@ impl ShmHandler for CaptureState {
 impl Dispatch<ZwlrScreencopyFrameV1, usize> for CaptureState {
     fn event(
         state: &mut Self,
-        frame: &ZwlrScreencopyFrameV1,
+        _frame: &ZwlrScreencopyFrameV1,
         event: zwlr_screencopy_frame_v1::Event,
         index: &usize,
         _connection: &Connection,
-        _queue_handle: &QueueHandle<Self>,
+        queue_handle: &QueueHandle<Self>,
     ) {
         match event {
             zwlr_screencopy_frame_v1::Event::Buffer {
@@ -290,11 +300,8 @@ impl Dispatch<ZwlrScreencopyFrameV1, usize> for CaptureState {
                         stride,
                     });
                 }
-                if frame.version() < 3 {
-                    state.start_copy(*index);
-                }
+                state.start_copy(*index, queue_handle);
             }
-            zwlr_screencopy_frame_v1::Event::BufferDone => state.start_copy(*index),
             zwlr_screencopy_frame_v1::Event::Flags { flags } => {
                 if let Some(pending) = state.pending.get_mut(*index) {
                     pending.y_inverted = flags.into_result().is_ok_and(|flags| {
@@ -356,3 +363,4 @@ delegate_registry!(CaptureState);
 delegate_output!(CaptureState);
 delegate_shm!(CaptureState);
 delegate_noop!(CaptureState: ignore ZwlrScreencopyManagerV1);
+delegate_noop!(CaptureState: ignore wl_buffer::WlBuffer);
