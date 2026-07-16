@@ -20,6 +20,7 @@ toml = "1.1.2"
 uzers = { version = "0.12.2", default-features = false }
 wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 zeroize = "1.9.0"
 
 [lints.rust]
