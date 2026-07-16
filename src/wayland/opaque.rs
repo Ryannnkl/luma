@@ -203,13 +203,13 @@ pub(crate) fn draw_lock_visuals(
     }
 }
 
-pub(crate) fn draw_lock_status_text(
+pub(crate) fn draw_lock_visual_feedback(
     canvas: &mut [u8],
     width: i32,
     height: i32,
     prompt_state: PromptState,
     config: &InputConfig,
-    renderer: &TextRenderer,
+    frame: u64,
 ) {
     let (Ok(width), Ok(height)) = (usize::try_from(width), usize::try_from(height)) else {
         return;
@@ -224,12 +224,44 @@ pub(crate) fn draw_lock_status_text(
         Rgba::from_config(config.feedback_background_color),
         BACKGROUND,
     );
-    let (text, background) = match prompt_state {
-        PromptState::Authenticating => (&config.authenticating_text, ready_background),
-        PromptState::Failure => (&config.failure_text, feedback_background),
-        PromptState::Cooldown => (&config.cooldown_text, feedback_background),
-        PromptState::Ready => return,
-    };
+    match prompt_state {
+        PromptState::Authenticating => {
+            fill_prompt(canvas, width, height, prompt, ready_background);
+            draw_loading_dots(
+                canvas,
+                width,
+                height,
+                prompt,
+                config,
+                frame,
+                ready_background,
+            );
+        }
+        PromptState::Failure => {
+            fill_prompt(canvas, width, height, prompt, BACKGROUND);
+            let shifted = shifted_prompt(prompt, width, frame);
+            fill_prompt(canvas, width, height, shifted, feedback_background);
+            let accent = opaque_over(Rgba::from_config(config.error_color), feedback_background);
+            draw_border(canvas, width, height, shifted, accent);
+            draw_cross(canvas, width, height, shifted, accent);
+        }
+        PromptState::Cooldown => {
+            fill_prompt(canvas, width, height, prompt, feedback_background);
+            draw_cooldown_dots(
+                canvas,
+                width,
+                height,
+                prompt,
+                config,
+                frame,
+                feedback_background,
+            );
+        }
+        PromptState::Ready => {}
+    }
+}
+
+fn fill_prompt(canvas: &mut [u8], width: usize, height: usize, prompt: Rectangle, color: Rgba) {
     fill_rect(
         canvas,
         width,
@@ -238,28 +270,183 @@ pub(crate) fn draw_lock_status_text(
         prompt.y,
         prompt.width,
         prompt.height,
-        background,
+        color,
     );
-    #[allow(clippy::cast_precision_loss)]
-    let center = (
-        prompt.x as f32 + prompt.width as f32 / 2.0,
-        prompt.y as f32 + prompt.height as f32 / 2.0,
+}
+
+fn draw_loading_dots(
+    canvas: &mut [u8],
+    width: usize,
+    height: usize,
+    prompt: Rectangle,
+    config: &InputConfig,
+    frame: u64,
+    background: Rgba,
+) {
+    let dot_count = 3;
+    let active = usize::try_from(frame % dot_count as u64).unwrap_or_default();
+    let maximum_radius = maximum_dot_radius(prompt);
+    let small_radius = rounded_size(config.empty_dot_radius).min(maximum_radius);
+    let large_radius = rounded_size(config.filled_dot_radius)
+        .saturating_add(1)
+        .min(maximum_radius);
+    let spacing = fitted_spacing(
+        prompt,
+        dot_count,
+        rounded_size(config.dot_spacing),
+        large_radius,
     );
-    renderer.draw_centered(
+    let start_x = prompt
+        .x
+        .saturating_add(prompt.width / 2)
+        .saturating_sub(spacing);
+    let center_y = prompt.y.saturating_add(prompt.height / 2);
+    let muted = opaque_over(Rgba::from_config(config.empty_dot_color), background);
+    let bright = opaque_over(Rgba::from_config(config.filled_dot_color), background);
+    for index in 0..dot_count {
+        fill_circle(
+            canvas,
+            width,
+            height,
+            start_x.saturating_add(index.saturating_mul(spacing)),
+            center_y,
+            if index == active {
+                large_radius
+            } else {
+                small_radius
+            },
+            if index == active { bright } else { muted },
+        );
+    }
+}
+
+fn draw_cooldown_dots(
+    canvas: &mut [u8],
+    width: usize,
+    height: usize,
+    prompt: Rectangle,
+    config: &InputConfig,
+    frame: u64,
+    background: Rgba,
+) {
+    let dot_count = 6;
+    let active = usize::try_from(frame % dot_count as u64).unwrap_or_default();
+    let radius = rounded_size(config.empty_dot_radius).min(maximum_dot_radius(prompt));
+    let spacing = fitted_spacing(prompt, dot_count, rounded_size(config.dot_spacing), radius);
+    let span = spacing.saturating_mul(dot_count.saturating_sub(1));
+    let start_x = prompt
+        .x
+        .saturating_add(prompt.width / 2)
+        .saturating_sub(span / 2);
+    let center_y = prompt.y.saturating_add(prompt.height / 2);
+    let muted = opaque_over(Rgba::from_config(config.empty_dot_color), background);
+    let accent = opaque_over(Rgba::from_config(config.feedback_text_color), background);
+    for index in 0..dot_count {
+        fill_circle(
+            canvas,
+            width,
+            height,
+            start_x.saturating_add(index.saturating_mul(spacing)),
+            center_y,
+            radius,
+            if index == active { accent } else { muted },
+        );
+    }
+}
+
+fn shifted_prompt(prompt: Rectangle, width: usize, frame: u64) -> Rectangle {
+    const OFFSETS: [isize; 8] = [0, -4, 4, -3, 3, -1, 1, 0];
+    let index = usize::try_from(frame)
+        .unwrap_or(OFFSETS.len())
+        .min(OFFSETS.len().saturating_sub(1));
+    let maximum_x = width.saturating_sub(prompt.width);
+    Rectangle {
+        x: prompt
+            .x
+            .saturating_add_signed(OFFSETS[index])
+            .min(maximum_x),
+        ..prompt
+    }
+}
+
+fn draw_border(canvas: &mut [u8], width: usize, height: usize, rectangle: Rectangle, color: Rgba) {
+    let thickness = 2_usize.min(rectangle.width).min(rectangle.height);
+    fill_rect(
         canvas,
         width,
         height,
-        ClipRectangle {
-            x: prompt.x,
-            y: prompt.y,
-            width: prompt.width,
-            height: prompt.height,
-        },
-        center,
-        config.feedback_text_size,
-        text,
-        config.feedback_text_color,
+        rectangle.x,
+        rectangle.y,
+        rectangle.width,
+        thickness,
+        color,
     );
+    fill_rect(
+        canvas,
+        width,
+        height,
+        rectangle.x,
+        rectangle
+            .y
+            .saturating_add(rectangle.height.saturating_sub(thickness)),
+        rectangle.width,
+        thickness,
+        color,
+    );
+    fill_rect(
+        canvas,
+        width,
+        height,
+        rectangle.x,
+        rectangle.y,
+        thickness,
+        rectangle.height,
+        color,
+    );
+    fill_rect(
+        canvas,
+        width,
+        height,
+        rectangle
+            .x
+            .saturating_add(rectangle.width.saturating_sub(thickness)),
+        rectangle.y,
+        thickness,
+        rectangle.height,
+        color,
+    );
+}
+
+fn draw_cross(canvas: &mut [u8], width: usize, height: usize, prompt: Rectangle, color: Rgba) {
+    let size = (prompt.height / 3).clamp(5, 12);
+    let start_x = prompt
+        .x
+        .saturating_add(prompt.width / 2)
+        .saturating_sub(size / 2);
+    let start_y = prompt
+        .y
+        .saturating_add(prompt.height / 2)
+        .saturating_sub(size / 2);
+    for offset in 0..=size {
+        fill_circle(
+            canvas,
+            width,
+            height,
+            start_x.saturating_add(offset),
+            start_y.saturating_add(offset),
+            1,
+            color,
+        );
+        fill_circle(
+            canvas,
+            width,
+            height,
+            start_x.saturating_add(size.saturating_sub(offset)),
+            start_y.saturating_add(offset),
+            1,
+            color,
+        );
+    }
 }
 
 #[allow(
@@ -515,8 +702,8 @@ mod tests {
     use crate::config::{Color, InputConfig};
 
     use super::{
-        BACKGROUND, PromptState, Rgba, draw_lock_frame, draw_lock_status_text, draw_lock_visuals,
-        opaque_over,
+        BACKGROUND, PromptState, Rgba, draw_lock_frame, draw_lock_visual_feedback,
+        draw_lock_visuals, opaque_over,
     };
 
     #[test]
@@ -760,13 +947,13 @@ mod tests {
     }
 
     #[test]
-    fn textual_feedback_hides_password_length_and_remains_opaque() {
+    fn visual_feedback_hides_password_length_and_animates() {
         let width = 240;
         let height = 140;
         let config = InputConfig::default();
-        let renderer = crate::renderer::TextRenderer::new().expect("embedded font must load");
         let mut short_password = vec![0; width * height * 4];
         let mut long_password = vec![0; width * height * 4];
+        let mut next_frame = vec![0; width * height * 4];
 
         for (canvas, password_length) in [(&mut short_password, 1), (&mut long_password, 12)] {
             draw_lock_frame(
@@ -777,17 +964,27 @@ mod tests {
                 PromptState::Authenticating,
                 &config,
             );
-            draw_lock_status_text(
-                canvas,
-                240,
-                140,
-                PromptState::Authenticating,
-                &config,
-                &renderer,
-            );
+            draw_lock_visual_feedback(canvas, 240, 140, PromptState::Authenticating, &config, 0);
         }
+        draw_lock_frame(
+            &mut next_frame,
+            240,
+            140,
+            1,
+            PromptState::Authenticating,
+            &config,
+        );
+        draw_lock_visual_feedback(
+            &mut next_frame,
+            240,
+            140,
+            PromptState::Authenticating,
+            &config,
+            1,
+        );
 
         assert_eq!(short_password, long_password);
+        assert_ne!(short_password, next_frame);
         assert!(short_password.chunks_exact(4).all(|pixel| pixel[3] == 255));
     }
 

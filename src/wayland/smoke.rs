@@ -41,7 +41,8 @@ use crate::{
     renderer::TextRenderer,
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
     wayland::opaque::{
-        PromptState, draw_lock_frame, draw_lock_prompt, draw_lock_status_text, draw_lock_visuals,
+        PromptState, draw_lock_frame, draw_lock_prompt, draw_lock_visual_feedback,
+        draw_lock_visuals,
     },
 };
 
@@ -210,6 +211,7 @@ struct LockState {
     input_config: InputConfig,
     presentation: Option<LockPresentation>,
     next_visual_redraw: Option<Instant>,
+    visual_frame: u64,
     authentication: Option<AuthenticationController>,
     shm_state: Shm,
     pool: SlotPool,
@@ -273,6 +275,7 @@ impl LockState {
                 .as_ref()
                 .filter(|presentation| presentation.clock.enabled || presentation.date.enabled)
                 .map(|_| Instant::now() + Duration::from_secs(1)),
+            visual_frame: 0,
             presentation,
             authentication: authentication_worker.map(|worker| AuthenticationController {
                 state: AuthenticationState::new(authentication_policy),
@@ -539,6 +542,7 @@ impl LockState {
                 Instant::now(),
             );
         }
+        self.schedule_visual_redraw();
     }
 
     fn handle_authentication_completion(&mut self, completion: AuthenticationCompletion) {
@@ -564,6 +568,7 @@ impl LockState {
                 session_lock.unlock();
             }
         }
+        self.schedule_visual_redraw();
         self.redraw_input_indicator();
     }
 
@@ -589,8 +594,33 @@ impl LockState {
         let previous_phase = authentication.state.phase();
         authentication.state.advance(Instant::now());
         if authentication.state.phase() != previous_phase {
+            self.schedule_visual_redraw();
             self.redraw_input_indicator();
         }
+    }
+
+    fn visual_interval(&self) -> Option<Duration> {
+        self.presentation.as_ref()?;
+        match prompt_state_for_phase(
+            self.authentication
+                .as_ref()
+                .map(|authentication| authentication.state.phase()),
+        ) {
+            PromptState::Ready => self
+                .presentation
+                .as_ref()
+                .filter(|presentation| presentation.clock.enabled || presentation.date.enabled)
+                .map(|_| Duration::from_secs(1)),
+            PromptState::Authenticating | PromptState::Failure | PromptState::Cooldown => {
+                Some(Duration::from_millis(120))
+            }
+        }
+    }
+
+    fn schedule_visual_redraw(&mut self) {
+        self.next_visual_redraw = self
+            .visual_interval()
+            .map(|interval| Instant::now() + interval);
     }
 
     fn advance_visuals(&mut self) {
@@ -601,7 +631,8 @@ impl LockState {
         if now < deadline {
             return;
         }
-        self.next_visual_redraw = Some(now + Duration::from_secs(1));
+        self.visual_frame = self.visual_frame.wrapping_add(1);
+        self.next_visual_redraw = self.visual_interval().map(|interval| now + interval);
         self.redraw_input_indicator();
     }
 
@@ -659,13 +690,13 @@ impl LockState {
                 prompt_state,
                 &self.input_config,
             );
-            draw_lock_status_text(
+            draw_lock_visual_feedback(
                 canvas,
                 width,
                 height,
                 prompt_state,
                 &self.input_config,
-                &presentation.renderer,
+                self.visual_frame,
             );
         }
         buffer
