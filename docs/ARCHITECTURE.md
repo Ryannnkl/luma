@@ -129,8 +129,9 @@ These are known follow-up tasks, not reasons to bypass the safety rules:
 
 ## Verification status
 
-The earlier synchronous authenticated path was exercised in a nested niri with a
-watchdog, where a correct password unlocked only the nested compositor. The new
-worker-driven path still requires the same nested test before primary-session
-use. The release binary builds without the smoke command, and the current suite
-passes `63` tests with `cargo fmt`, Clippy, and Cargo tests.
+The authenticated path, asynchronous PAM feedback, and optional captured
+background have been exercised in a nested niri under the external watchdog.
+The release binary acquires the nested session lock without a screencopy protocol
+error and builds without the smoke or demo commands. The current suite passes
+`74` tests with cargo fmt, Clippy, and Cargo tests. Primary-session recovery,
+renderer-failure, repeated output-change, and suspend/resume gates remain open.

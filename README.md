@@ -126,6 +126,24 @@ GPU blur, the complete real-lock theme, or production integration with niri and
 wlogout. The test runner starts a new nested niri and an external 60-second
 watchdog; it never adds a timed unlock to Luma.
 
+## User-local installation
+
+Install a reviewed release build at a stable user-local path with:
+
+```sh
+./scripts/install-user.sh
+```
+
+The installer uses the locked dependency graph, builds the release target, and
+atomically replaces `~/.local/bin/luma`. Set `LUMA_INSTALL_DIR` to select another
+user-writable directory. Installing the binary does not modify niri, swayidle,
+wlogout, PAM, or the Luma configuration.
+
+Keep every normal lock action pointed at swaylock during the first real-session
+trial. Follow the TTY recovery gate and manual launch procedure in
+[docs/TESTING.md](docs/TESTING.md); do not point a keybinding at a Cargo `target`
+artifact.
+
 ## Development checks
 
 ```sh
@@ -142,9 +160,10 @@ The current runtime design and known limitations are recorded in
 
 ## Security status
 
-Real session locking and PAM authentication exist as an experimental nested-test
-path. They are not approved for the primary session until the release gate in
-[ROADMAP.md](ROADMAP.md) is satisfied.
+Real session locking and PAM authentication remain experimental. A deliberate
+manual primary-session trial is permitted only through the recovery procedure in
+[docs/TESTING.md](docs/TESTING.md); Luma must not replace the normal integrations
+until the release gate in [ROADMAP.md](ROADMAP.md) is satisfied.
 
 ## License
 

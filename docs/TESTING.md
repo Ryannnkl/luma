@@ -194,17 +194,48 @@ Confirm that release builds reject the smoke command:
 target/release/luma --lock-smoke
 ```
 
-Do not use `--lock` in the primary compositor or change the normal keybinding at
-this milestone. The asynchronous worker and enforced cooldown are covered by
-automated tests, but this revised path and its feedback must pass the nested test
-above. Configurable real-lock feedback and a timeout for a stuck PAM backend are
-not implemented yet.
+Do not change the normal keybinding at this milestone. The asynchronous worker,
+enforced cooldown, visual feedback, and captured background have passed the
+guarded nested test. The next gate is one deliberate primary-session trial with
+verified TTY recovery. A timeout for a stuck PAM backend is not implemented yet.
 
 ## Eventual real-session test
 
 Keep swaylock configured as the normal keybinding while Luma is experimental.
 Start the first real Luma lock manually from a terminal instead of changing niri
 or wlogout configuration.
+
+Before the first trial:
+
+1. Save all work that must survive terminating the graphical session.
+2. Record the graphical session ID and virtual terminal:
+
+   ```sh
+   loginctl show-session "$XDG_SESSION_ID" -p Id -p VTNr -p State
+   ```
+
+3. While nothing is locked, switch to a spare TTY, log in, confirm that the
+   recorded graphical session appears in `loginctl list-sessions`, and return to
+   the graphical VT. Do not continue until this recovery route works.
+4. Build and atomically install the reviewed release binary:
+
+   ```sh
+   ./scripts/install-user.sh
+   ~/.local/bin/luma --check
+   ```
+
+5. Confirm `/etc/pam.d/luma` still matches the reviewed `pam/luma` policy and
+   leave the niri keybinding, swayidle command, and wlogout action on swaylock.
+
+Start exactly one manual trial from a terminal in the primary session:
+
+```sh
+~/.local/bin/luma --lock
+```
+
+First confirm a normal unlock. On a later trial, confirm that an incorrect
+password keeps the session locked before entering the correct password. Do not
+test suspend/resume or output reconfiguration during this milestone.
 
 If a real lock client crashes after niri confirms the session lock, killing the
 client may leave the session securely locked. From the verified TTY, inspect it:
@@ -223,3 +254,8 @@ loginctl terminate-session SESSION_ID
 
 This closes applications in that session and can lose unsaved work. It is not a
 normal unlock mechanism.
+
+Only after repeated manual trials and the remaining release-gate tests should
+the normal integrations be changed, one at a time: the explicit niri keybinding,
+then wlogout, and finally swayidle and `before-sleep`. Keep swaylock installed
+through the initial Luma trial period.

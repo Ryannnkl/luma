@@ -54,7 +54,7 @@ until the release gate is satisfied.
 
 - Test process failures, output hotplug, suspend/resume, scaling, and GPU loss.
 - Add niri keybinding and wlogout integration documentation.
-- Add manual TTY recovery documentation.
+- [x] Add manual TTY recovery and staged real-session trial documentation.
 - Package Luma for Fedora and prepare a COPR-compatible build.
 
 ## Release gate
