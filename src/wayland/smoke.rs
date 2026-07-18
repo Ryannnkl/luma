@@ -122,6 +122,9 @@ pub fn run_authenticated(config: Config) -> Result<(), LockError> {
     }
 
     if state.unlock_authorized {
+        connection
+            .flush()
+            .map_err(|error| LockError::Unlock(error.to_string()))?;
         Ok(())
     } else {
         Err(LockError::FinishedWithoutAuthentication)
@@ -181,6 +184,7 @@ pub enum LockError {
     AuthenticationWorker(std::io::Error),
     EventLoop(String),
     EventSource(&'static str),
+    Unlock(String),
     NoOutputs,
     FinishedWithoutAuthentication,
     #[cfg(debug_assertions)]
@@ -210,6 +214,12 @@ impl fmt::Display for LockError {
             }
             Self::EventLoop(source) => write!(formatter, "lock event loop failed: {source}"),
             Self::EventSource(source) => formatter.write_str(source),
+            Self::Unlock(source) => {
+                write!(
+                    formatter,
+                    "could not deliver the authenticated unlock: {source}"
+                )
+            }
             Self::NoOutputs => formatter.write_str("Wayland reported no outputs to lock"),
             Self::FinishedWithoutAuthentication => {
                 formatter.write_str("the session lock ended without an authenticated unlock")
@@ -595,6 +605,10 @@ impl LockState {
             if let Some(session_lock) = &self.session_lock {
                 session_lock.unlock();
             }
+            // `finished` rejects or cancels a lock; it is not an acknowledgement of a
+            // client-initiated unlock, so the event loop must terminate here.
+            self.finished = true;
+            return;
         }
         self.schedule_visual_redraw();
         self.redraw_input_indicator();
