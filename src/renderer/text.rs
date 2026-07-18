@@ -1,4 +1,11 @@
-use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
+use std::{
+    fmt,
+    fs::File,
+    io::{self, Read},
+    path::{Path, PathBuf},
+};
+
+use ab_glyph::{Font, FontArc, PxScale, ScaleFont, point};
 
 use crate::config::Color;
 
@@ -10,9 +17,12 @@ pub struct ClipRectangle {
     pub height: usize,
 }
 
+#[derive(Debug)]
 pub struct TextRenderer {
-    font: FontRef<'static>,
+    font: FontArc,
 }
+
+const MAX_FONT_BYTES: u64 = 16 * 1024 * 1024;
 
 impl TextRenderer {
     /// Creates a renderer backed by Luma's embedded font.
@@ -21,7 +31,46 @@ impl TextRenderer {
     ///
     /// Returns an error when the embedded font cannot be parsed.
     pub fn new() -> Result<Self, ab_glyph::InvalidFont> {
-        FontRef::try_from_slice(epaint_default_fonts::UBUNTU_LIGHT).map(|font| Self { font })
+        FontArc::try_from_slice(epaint_default_fonts::UBUNTU_LIGHT).map(|font| Self { font })
+    }
+
+    /// Creates a renderer from a regular font file with a bounded allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be opened, is not regular, exceeds
+    /// the size limit, changes beyond the limit while reading, or is not a
+    /// supported font.
+    pub fn from_path(path: &Path) -> Result<Self, FontLoadError> {
+        let file = File::open(path).map_err(|source| FontLoadError::Read {
+            path: path.to_owned(),
+            source,
+        })?;
+        let metadata = file.metadata().map_err(|source| FontLoadError::Read {
+            path: path.to_owned(),
+            source,
+        })?;
+        if !metadata.file_type().is_file() {
+            return Err(FontLoadError::NotRegular(path.to_owned()));
+        }
+        if metadata.len() > MAX_FONT_BYTES {
+            return Err(FontLoadError::TooLarge(path.to_owned()));
+        }
+
+        let capacity = usize::try_from(metadata.len()).unwrap_or(0);
+        let mut bytes = Vec::with_capacity(capacity);
+        file.take(MAX_FONT_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|source| FontLoadError::Read {
+                path: path.to_owned(),
+                source,
+            })?;
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_FONT_BYTES {
+            return Err(FontLoadError::TooLarge(path.to_owned()));
+        }
+        let font =
+            FontArc::try_from_vec(bytes).map_err(|_| FontLoadError::Invalid(path.to_owned()))?;
+        Ok(Self { font })
     }
 
     #[allow(
@@ -99,6 +148,48 @@ impl TextRenderer {
     }
 }
 
+#[derive(Debug)]
+pub enum FontLoadError {
+    Read { path: PathBuf, source: io::Error },
+    NotRegular(PathBuf),
+    TooLarge(PathBuf),
+    Invalid(PathBuf),
+}
+
+impl fmt::Display for FontLoadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read { path, source } => {
+                write!(
+                    formatter,
+                    "could not read font {}: {source}",
+                    path.display()
+                )
+            }
+            Self::NotRegular(path) => {
+                write!(formatter, "font {} is not a regular file", path.display())
+            }
+            Self::TooLarge(path) => write!(
+                formatter,
+                "font {} exceeds the 16 MiB safety limit",
+                path.display()
+            ),
+            Self::Invalid(path) => {
+                write!(formatter, "font {} has an invalid format", path.display())
+            }
+        }
+    }
+}
+
+impl std::error::Error for FontLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read { source, .. } => Some(source),
+            Self::NotRegular(_) | Self::TooLarge(_) | Self::Invalid(_) => None,
+        }
+    }
+}
+
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -160,13 +251,36 @@ fn blend_pixel(
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::PathBuf};
+
     use crate::config::Color;
 
-    use super::{ClipRectangle, TextRenderer};
+    use super::{ClipRectangle, FontLoadError, TextRenderer};
 
     #[test]
     fn embedded_font_is_valid() {
         assert!(TextRenderer::new().is_ok());
+    }
+
+    #[test]
+    fn loads_a_bounded_custom_font_file() {
+        let path = temporary_font_path("valid");
+        fs::write(&path, epaint_default_fonts::HACK_REGULAR)
+            .expect("temporary font should be written");
+
+        let result = TextRenderer::from_path(&path);
+
+        fs::remove_file(path).expect("temporary font should be removed");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn rejects_a_missing_custom_font_file() {
+        let path = temporary_font_path("missing");
+
+        let error = TextRenderer::from_path(&path).expect_err("missing font must fail");
+
+        assert!(matches!(error, FontLoadError::Read { .. }));
     }
 
     #[test]
@@ -241,5 +355,9 @@ mod tests {
         return pixel[3];
         #[cfg(target_endian = "big")]
         return pixel[0];
+    }
+
+    fn temporary_font_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("luma-font-{}-{label}.ttf", std::process::id()))
     }
 }
