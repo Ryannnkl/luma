@@ -5,29 +5,7 @@
 [background]
 capture_enabled = false
 blur_radius = 24
-base_color = "#183434"
 dim_color = "#00000052"
-
-[[background.spots]]
-x = 0.18
-y = 0.24
-falloff = 8.0
-strength = 0.55
-color = "#4a745f"
-
-[[background.spots]]
-x = 0.76
-y = 0.18
-falloff = 7.0
-strength = 0.48
-color = "#265b69"
-
-[[background.spots]]
-x = 0.69
-y = 0.60
-falloff = 12.0
-strength = 0.48
-color = "#916b3a"
 
 [clock]
 enabled = true

@@ -6,7 +6,7 @@ use eframe::egui::{
     TextureOptions, Vec2,
 };
 
-use crate::config::{BackgroundConfig, Color, Config, DateConfig, InputConfig};
+use crate::config::{Color, Config, DateConfig, InputConfig};
 
 pub fn run(config: Config) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -36,7 +36,7 @@ impl DemoApp {
     fn new(creation_context: &eframe::CreationContext<'_>, config: Config) -> Self {
         let background = creation_context.egui_ctx.load_texture(
             "luma-demo-background",
-            create_background(&config.background),
+            create_background(),
             TextureOptions::LINEAR,
         );
 
@@ -276,19 +276,25 @@ fn paint_password_indicator(
     clippy::cast_precision_loss,
     clippy::cast_sign_loss
 )]
-fn create_background(config: &BackgroundConfig) -> ColorImage {
+fn create_background() -> ColorImage {
     const WIDTH: usize = 160;
     const HEIGHT: usize = 90;
+    const BASE: [u8; 4] = [24, 52, 52, 255];
+    const SPOTS: [(f32, f32, f32, f32, [u8; 4]); 3] = [
+        (0.18, 0.24, 8.0, 0.55, [74, 116, 95, 255]),
+        (0.76, 0.18, 7.0, 0.48, [38, 91, 105, 255]),
+        (0.69, 0.60, 12.0, 0.48, [145, 107, 58, 255]),
+    ];
     let mut pixels = Vec::with_capacity(WIDTH * HEIGHT);
 
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
             let x = x as f32 / WIDTH as f32;
             let y = y as f32 / HEIGHT as f32;
-            let mut color = config.base_color.channels();
-            for spot in &config.spots {
-                let weight = soft_spot(x, y, spot.x, spot.y, spot.falloff) * spot.strength;
-                color = blend(color, spot.color.channels(), weight);
+            let mut color = BASE;
+            for (center_x, center_y, falloff, strength, spot_color) in SPOTS {
+                let weight = soft_spot(x, y, center_x, center_y, falloff) * strength;
+                color = blend(color, spot_color, weight);
             }
 
             pixels.push(Color32::from_rgb(color[0], color[1], color[2]));

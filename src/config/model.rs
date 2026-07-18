@@ -21,33 +21,12 @@ impl Config {
     /// Returns the first field that is non-finite, outside its supported range,
     /// internally inconsistent, empty, or excessively long.
     pub fn validate(&self) -> Result<(), ValidationError> {
-        if self.background.spots.len() > 32 {
-            return Err(ValidationError::new(
-                "background.spots",
-                "must contain at most 32 spots",
-            ));
-        }
         if self.background.blur_radius > 64 {
             return Err(ValidationError::new(
                 "background.blur_radius",
                 "must not exceed 64",
             ));
         }
-        for (index, spot) in self.background.spots.iter().enumerate() {
-            validate_range(spot.x, -1.0..=2.0, format!("background.spots[{index}].x"))?;
-            validate_range(spot.y, -1.0..=2.0, format!("background.spots[{index}].y"))?;
-            validate_range(
-                spot.falloff,
-                0.1..=100.0,
-                format!("background.spots[{index}].falloff"),
-            )?;
-            validate_range(
-                spot.strength,
-                0.0..=1.0,
-                format!("background.spots[{index}].strength"),
-            )?;
-        }
-
         validate_position(self.clock.x, self.clock.y, "clock")?;
         validate_range(self.clock.size_ratio, 0.01..=1.0, "clock.size_ratio")?;
         validate_range(self.clock.min_size, 8.0..=512.0, "clock.min_size")?;
@@ -175,9 +154,7 @@ fn validate_text(value: &str, field: &'static str, max: usize) -> Result<(), Val
 pub struct BackgroundConfig {
     pub capture_enabled: bool,
     pub blur_radius: u32,
-    pub base_color: Color,
     pub dim_color: Color,
-    pub spots: Vec<BackgroundSpot>,
 }
 
 impl Default for BackgroundConfig {
@@ -185,43 +162,9 @@ impl Default for BackgroundConfig {
         Self {
             capture_enabled: false,
             blur_radius: 24,
-            base_color: Color::rgb(24, 52, 52),
             dim_color: Color::rgba(0, 0, 0, 82),
-            spots: vec![
-                BackgroundSpot {
-                    x: 0.18,
-                    y: 0.24,
-                    falloff: 8.0,
-                    strength: 0.55,
-                    color: Color::rgb(74, 116, 95),
-                },
-                BackgroundSpot {
-                    x: 0.76,
-                    y: 0.18,
-                    falloff: 7.0,
-                    strength: 0.48,
-                    color: Color::rgb(38, 91, 105),
-                },
-                BackgroundSpot {
-                    x: 0.69,
-                    y: 0.60,
-                    falloff: 12.0,
-                    strength: 0.48,
-                    color: Color::rgb(145, 107, 58),
-                },
-            ],
         }
     }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BackgroundSpot {
-    pub x: f32,
-    pub y: f32,
-    pub falloff: f32,
-    pub strength: f32,
-    pub color: Color,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -363,6 +306,19 @@ mod tests {
         .expect_err("misspelled fields must not be silently ignored");
 
         assert!(error.to_string().contains("unknown field `enabeld`"));
+    }
+
+    #[test]
+    fn demo_background_fields_are_rejected() {
+        let error = toml::from_str::<Config>(
+            r##"
+                [background]
+                base_color = "#183434"
+            "##,
+        )
+        .expect_err("demo-only fields must not enter the release configuration");
+
+        assert!(error.to_string().contains("unknown field `base_color`"));
     }
 
     #[test]
