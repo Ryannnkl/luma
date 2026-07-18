@@ -19,6 +19,9 @@ hour_offset_x_ratio = -0.10
 minute_offset_x_ratio = 0.16
 hour_format = "%H"
 minute_format = "%M"
+# Optional absolute paths to TTF or OTF files. Omit them to use the embedded font.
+# hour_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
+# minute_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
 hour_color = "#93e6be"
 minute_color = "#f6f8f7"
 
@@ -27,6 +30,7 @@ enabled = false
 x = 0.50
 y = 0.72
 format = "%A, %d %B"
+# font_path = "/usr/share/fonts/example/Example-Regular.ttf"
 size = 22.0
 color = "#f6f8f7dc"
 

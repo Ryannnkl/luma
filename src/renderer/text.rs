@@ -24,6 +24,54 @@ pub struct TextRenderer {
 
 const MAX_FONT_BYTES: u64 = 16 * 1024 * 1024;
 
+#[derive(Debug)]
+pub struct LockTextRenderers {
+    hour: TextRenderer,
+    minute: TextRenderer,
+    date: TextRenderer,
+}
+
+impl LockTextRenderers {
+    /// Loads every configured font before the session lock is requested.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an embedded or configured font cannot be loaded.
+    pub fn from_paths(
+        hour: Option<&Path>,
+        minute: Option<&Path>,
+        date: Option<&Path>,
+    ) -> Result<Self, FontLoadError> {
+        Ok(Self {
+            hour: load_optional_font(hour)?,
+            minute: load_optional_font(minute)?,
+            date: load_optional_font(date)?,
+        })
+    }
+
+    #[must_use]
+    pub const fn hour(&self) -> &TextRenderer {
+        &self.hour
+    }
+
+    #[must_use]
+    pub const fn minute(&self) -> &TextRenderer {
+        &self.minute
+    }
+
+    #[must_use]
+    pub const fn date(&self) -> &TextRenderer {
+        &self.date
+    }
+}
+
+fn load_optional_font(path: Option<&Path>) -> Result<TextRenderer, FontLoadError> {
+    match path {
+        Some(path) => TextRenderer::from_path(path),
+        None => TextRenderer::new().map_err(|_| FontLoadError::EmbeddedInvalid),
+    }
+}
+
 impl TextRenderer {
     /// Creates a renderer backed by Luma's embedded font.
     ///
@@ -150,6 +198,7 @@ impl TextRenderer {
 
 #[derive(Debug)]
 pub enum FontLoadError {
+    EmbeddedInvalid,
     Read { path: PathBuf, source: io::Error },
     NotRegular(PathBuf),
     TooLarge(PathBuf),
@@ -159,6 +208,7 @@ pub enum FontLoadError {
 impl fmt::Display for FontLoadError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EmbeddedInvalid => formatter.write_str("embedded font has an invalid format"),
             Self::Read { path, source } => {
                 write!(
                     formatter,
@@ -185,7 +235,9 @@ impl std::error::Error for FontLoadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Read { source, .. } => Some(source),
-            Self::NotRegular(_) | Self::TooLarge(_) | Self::Invalid(_) => None,
+            Self::EmbeddedInvalid | Self::NotRegular(_) | Self::TooLarge(_) | Self::Invalid(_) => {
+                None
+            }
         }
     }
 }
@@ -255,11 +307,12 @@ mod tests {
 
     use crate::config::Color;
 
-    use super::{ClipRectangle, FontLoadError, TextRenderer};
+    use super::{ClipRectangle, FontLoadError, LockTextRenderers, TextRenderer};
 
     #[test]
     fn embedded_font_is_valid() {
         assert!(TextRenderer::new().is_ok());
+        assert!(LockTextRenderers::from_paths(None, None, None).is_ok());
     }
 
     #[test]

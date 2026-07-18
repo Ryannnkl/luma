@@ -1,4 +1,4 @@
-use std::{fmt, ops::RangeInclusive};
+use std::{fmt, ops::RangeInclusive, path::PathBuf};
 
 use serde::Deserialize;
 
@@ -50,10 +50,16 @@ impl Config {
         )?;
         validate_text(&self.clock.hour_format, "clock.hour_format", 128)?;
         validate_text(&self.clock.minute_format, "clock.minute_format", 128)?;
+        validate_font_path(self.clock.hour_font_path.as_ref(), "clock.hour_font_path")?;
+        validate_font_path(
+            self.clock.minute_font_path.as_ref(),
+            "clock.minute_font_path",
+        )?;
 
         validate_position(self.date.x, self.date.y, "date")?;
         validate_range(self.date.size, 8.0..=256.0, "date.size")?;
         validate_text(&self.date.format, "date.format", 128)?;
+        validate_font_path(self.date.font_path.as_ref(), "date.font_path")?;
 
         validate_position(self.input.x, self.input.y, "input")?;
         validate_range(self.input.width, 24.0..=2_048.0, "input.width")?;
@@ -149,6 +155,19 @@ fn validate_text(value: &str, field: &'static str, max: usize) -> Result<(), Val
     }
 }
 
+fn validate_font_path(path: Option<&PathBuf>, field: &'static str) -> Result<(), ValidationError> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    if path.as_os_str().is_empty() {
+        Err(ValidationError::new(field, "must not be empty"))
+    } else if !path.is_absolute() {
+        Err(ValidationError::new(field, "must be an absolute path"))
+    } else {
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct BackgroundConfig {
@@ -181,6 +200,8 @@ pub struct ClockConfig {
     pub minute_offset_x_ratio: f32,
     pub hour_format: String,
     pub minute_format: String,
+    pub hour_font_path: Option<PathBuf>,
+    pub minute_font_path: Option<PathBuf>,
     pub hour_color: Color,
     pub minute_color: Color,
 }
@@ -199,6 +220,8 @@ impl Default for ClockConfig {
             minute_offset_x_ratio: 0.16,
             hour_format: "%H".to_owned(),
             minute_format: "%M".to_owned(),
+            hour_font_path: None,
+            minute_font_path: None,
             hour_color: Color::rgb(147, 230, 190),
             minute_color: Color::rgb(246, 248, 247),
         }
@@ -212,6 +235,7 @@ pub struct DateConfig {
     pub x: f32,
     pub y: f32,
     pub format: String,
+    pub font_path: Option<PathBuf>,
     pub size: f32,
     pub color: Color,
 }
@@ -223,6 +247,7 @@ impl Default for DateConfig {
             x: 0.5,
             y: 0.72,
             format: "%A, %d %B".to_owned(),
+            font_path: None,
             size: 22.0,
             color: Color::rgba(246, 248, 247, 220),
         }
@@ -277,6 +302,8 @@ impl Default for InputConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::Config;
 
     #[test]
@@ -363,5 +390,17 @@ mod tests {
             .expect_err("blur radius must remain bounded");
 
         assert_eq!(error.field, "background.blur_radius");
+    }
+
+    #[test]
+    fn rejects_relative_font_paths() {
+        let mut config = Config::default();
+        config.clock.hour_font_path = Some(PathBuf::from("font.ttf"));
+
+        let error = config
+            .validate()
+            .expect_err("font resources need stable absolute paths");
+
+        assert_eq!(error.field, "clock.hour_font_path");
     }
 }

@@ -2,7 +2,7 @@ use chrono::{DateTime, Local};
 
 use crate::{
     config::{ClockConfig, Color, DateConfig, InputConfig},
-    renderer::{BackgroundImage, ClipRectangle, TextRenderer},
+    renderer::{BackgroundImage, ClipRectangle, LockTextRenderers},
 };
 
 const BACKGROUND: Rgba = Rgba::new(18, 26, 28, 255);
@@ -144,7 +144,7 @@ pub(crate) fn draw_lock_visuals(
     height: i32,
     clock: &ClockConfig,
     date: &DateConfig,
-    renderer: &TextRenderer,
+    renderers: &LockTextRenderers,
     now: DateTime<Local>,
 ) {
     let (Ok(width), Ok(height)) = (usize::try_from(width), usize::try_from(height)) else {
@@ -165,7 +165,7 @@ pub(crate) fn draw_lock_visuals(
         let center = (clock.x * width as f32, clock.y * height as f32);
         let hour = now.format(&clock.hour_format).to_string();
         let minute = now.format(&clock.minute_format).to_string();
-        renderer.draw_centered(
+        renderers.hour().draw_centered(
             canvas,
             width,
             height,
@@ -178,7 +178,7 @@ pub(crate) fn draw_lock_visuals(
             &hour,
             clock.hour_color,
         );
-        renderer.draw_centered(
+        renderers.minute().draw_centered(
             canvas,
             width,
             height,
@@ -197,7 +197,7 @@ pub(crate) fn draw_lock_visuals(
         #[allow(clippy::cast_precision_loss)]
         let center = (date.x * width as f32, date.y * height as f32);
         let formatted = now.format(&date.format).to_string();
-        renderer.draw_centered(
+        renderers.date().draw_centered(
             canvas, width, height, clip, center, date.size, &formatted, date.color,
         );
     }
@@ -987,7 +987,8 @@ mod tests {
         let width = 400;
         let height = 300;
         let mut canvas = encoded(BACKGROUND).repeat(width * height);
-        let renderer = crate::renderer::TextRenderer::new().expect("embedded font must load");
+        let renderers = crate::renderer::LockTextRenderers::from_paths(None, None, None)
+            .expect("embedded fonts must load");
         let clock = crate::config::ClockConfig::default();
         let date = crate::config::DateConfig {
             enabled: true,
@@ -998,7 +999,7 @@ mod tests {
             .single()
             .expect("test date must be valid");
 
-        draw_lock_visuals(&mut canvas, 400, 300, &clock, &date, &renderer, now);
+        draw_lock_visuals(&mut canvas, 400, 300, &clock, &date, &renderers, now);
 
         assert!(
             canvas

@@ -38,7 +38,7 @@ use crate::{
     auth::worker::{AuthenticationCompletion, AuthenticationWorker},
     config::{ClockConfig, Color, Config, DateConfig, InputConfig},
     input::InputState,
-    renderer::TextRenderer,
+    renderer::LockTextRenderers,
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
     wayland::opaque::{
         PromptState, draw_captured_background, draw_lock_frame, draw_lock_prompt,
@@ -55,6 +55,12 @@ use super::capture::{CapturedOutput, capture_outputs};
 /// Returns an error when critical Wayland resources are unavailable, the compositor rejects the
 /// lock, or the authenticated unlock request cannot be delivered.
 pub fn run_authenticated(config: Config) -> Result<(), LockError> {
+    let renderers = LockTextRenderers::from_paths(
+        config.clock.hour_font_path.as_deref(),
+        config.clock.minute_font_path.as_deref(),
+        config.date.font_path.as_deref(),
+    )
+    .map_err(|error| LockError::Font(error.to_string()))?;
     let captured_outputs = if config.background.capture_enabled {
         capture_outputs(config.background.blur_radius)
             .map_err(|error| LockError::Capture(error.to_string()))?
@@ -62,7 +68,7 @@ pub fn run_authenticated(config: Config) -> Result<(), LockError> {
         Vec::new()
     };
     let presentation = LockPresentation {
-        renderer: TextRenderer::new().map_err(|error| LockError::Font(error.to_string()))?,
+        renderers,
         clock: config.clock,
         date: config.date,
         dim_color: config.background.dim_color,
@@ -244,7 +250,7 @@ struct AuthenticationController {
 }
 
 struct LockPresentation {
-    renderer: TextRenderer,
+    renderers: LockTextRenderers,
     clock: ClockConfig,
     date: DateConfig,
     dim_color: Color,
@@ -717,7 +723,7 @@ impl LockState {
                 height,
                 &presentation.clock,
                 &presentation.date,
-                &presentation.renderer,
+                &presentation.renderers,
                 chrono::Local::now(),
             );
             draw_lock_prompt(
