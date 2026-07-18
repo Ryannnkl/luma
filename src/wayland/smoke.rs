@@ -1,5 +1,6 @@
 use std::{
     fmt,
+    io::{self, Write},
     time::{Duration, Instant},
 };
 
@@ -54,7 +55,7 @@ use super::capture::{CapturedOutput, capture_outputs};
 ///
 /// Returns an error when critical Wayland resources are unavailable, the compositor rejects the
 /// lock, or the authenticated unlock request cannot be delivered.
-pub fn run_authenticated(config: Config) -> Result<(), LockError> {
+pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockError> {
     let renderers = LockTextRenderers::from_paths(
         config.clock.hour_font_path.as_deref(),
         config.clock.minute_font_path.as_deref(),
@@ -87,6 +88,7 @@ pub fn run_authenticated(config: Config) -> Result<(), LockError> {
         Some(authentication_worker),
         config.input,
         Some(presentation),
+        notify_ready,
     )?;
     if state.output_state.outputs().next().is_none() {
         return Err(LockError::NoOutputs);
@@ -119,6 +121,7 @@ pub fn run_authenticated(config: Config) -> Result<(), LockError> {
             .map_err(|error| LockError::EventLoop(error.to_string()))?;
         state.advance_authentication();
         state.advance_visuals();
+        state.notify_ready_if_covered(&connection);
     }
 
     if state.unlock_authorized {
@@ -146,7 +149,7 @@ pub fn run(timeout: Duration) -> Result<(), LockError> {
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
-    let mut state = LockState::new(&globals, &qh, None, InputConfig::default(), None)?;
+    let mut state = LockState::new(&globals, &qh, None, InputConfig::default(), None, false)?;
     let lock = state
         .lock_manager
         .lock(&qh)
@@ -252,6 +255,14 @@ struct LockState {
     surfaces: Vec<LockSurfaceState>,
     unlock_authorized: bool,
     finished: bool,
+    readiness: LockReadiness,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum LockReadiness {
+    Disabled,
+    Pending,
+    Notified,
 }
 
 struct AuthenticationController {
@@ -282,6 +293,7 @@ impl LockState {
         authentication_worker: Option<AuthenticationWorker>,
         input_config: InputConfig,
         presentation: Option<LockPresentation>,
+        notify_ready: bool,
     ) -> Result<Self, LockError> {
         let compositor = globals
             .bind(qh, 1..=6, ())
@@ -323,7 +335,39 @@ impl LockState {
             surfaces: Vec::new(),
             unlock_authorized: false,
             finished: false,
+            readiness: if notify_ready {
+                LockReadiness::Pending
+            } else {
+                LockReadiness::Disabled
+            },
         })
+    }
+
+    fn notify_ready_if_covered(&mut self, connection: &Connection) {
+        if self.readiness != LockReadiness::Pending
+            || !self
+                .session_lock
+                .as_ref()
+                .is_some_and(SessionLock::is_locked)
+        {
+            return;
+        }
+
+        let output_count = self.output_state.outputs().count();
+        if output_count == 0
+            || self.surfaces.len() != output_count
+            || self.surfaces.iter().any(|surface| surface.buffer.is_none())
+        {
+            return;
+        }
+        if connection.flush().is_err() {
+            return;
+        }
+
+        self.readiness = LockReadiness::Notified;
+        let mut stdout = io::stdout().lock();
+        let _ =
+            writeln!(stdout, "{}", crate::daemon::ready_message()).and_then(|()| stdout.flush());
     }
 }
 

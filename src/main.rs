@@ -1,6 +1,7 @@
 pub mod auth;
 mod cli;
 pub mod config;
+mod daemon;
 #[cfg(debug_assertions)]
 mod demo;
 pub mod input;
@@ -40,7 +41,15 @@ fn main() -> ExitCode {
         Ok(Command::Outputs) => list_outputs(),
         Ok(Command::Lock {
             config: config_path,
-        }) => run_lock(config_path.as_deref()),
+            daemonize,
+            notify_ready,
+        }) => {
+            if daemonize {
+                run_daemonized_lock(config_path.as_deref())
+            } else {
+                run_lock(config_path.as_deref(), notify_ready)
+            }
+        }
         #[cfg(debug_assertions)]
         Ok(Command::LockSmoke) => run_lock_smoke(),
         Ok(Command::Help) => {
@@ -149,7 +158,17 @@ fn run_lock_smoke() -> ExitCode {
     }
 }
 
-fn run_lock(config_path: Option<&std::path::Path>) -> ExitCode {
+fn run_daemonized_lock(config_path: Option<&std::path::Path>) -> ExitCode {
+    match daemon::spawn_lock(config_path) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("luma: refusing to detach: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_lock(config_path: Option<&std::path::Path>, notify_ready: bool) -> ExitCode {
     let config = match config::Config::load(config_path) {
         Ok(config) => config,
         Err(error) => {
@@ -163,7 +182,7 @@ fn run_lock(config_path: Option<&std::path::Path>) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    match wayland::run_lock(config) {
+    match wayland::run_lock(config, notify_ready) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("luma: session lock failed: {error}");

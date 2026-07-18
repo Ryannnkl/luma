@@ -1,10 +1,10 @@
 use std::{fmt, path::PathBuf};
 
 #[cfg(debug_assertions)]
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma --lock [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (debug builds, nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo or --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --demo [--config PATH]\n       luma --lock [--daemonize] [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --daemonize    Detach after every current output has an opaque lock frame\n  --demo         Start the harmless visual demo\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --lock-smoke   Lock for five seconds (debug builds, nested compositor only)\n  --config PATH  Use a specific TOML configuration with --demo or --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[cfg(not(debug_assertions))]
-const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --lock [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
+const HELP: &str = "Luma — a secure Wayland session locker\n\nUsage: luma --lock [--daemonize] [--config PATH]\n       luma [OPTIONS]\n\nOptions:\n  --lock         Lock the session and authenticate through PAM\n  --daemonize    Detach after every current output has an opaque lock frame\n  --check        Check Wayland lock capabilities without locking\n  --outputs      List Wayland outputs without locking\n  --config PATH  Use a specific TOML configuration with --lock\n  -h, --help     Show this help\n  -V, --version  Show version information";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
@@ -14,6 +14,8 @@ pub enum Command {
     },
     Lock {
         config: Option<PathBuf>,
+        daemonize: bool,
+        notify_ready: bool,
     },
     Check,
     Outputs,
@@ -44,8 +46,12 @@ where
     };
 
     if argument == "--lock" {
-        let config = parse_config_options(arguments)?;
-        return Ok(Command::Lock { config });
+        let (config, daemonize, notify_ready) = parse_lock_options(arguments)?;
+        return Ok(Command::Lock {
+            config,
+            daemonize,
+            notify_ready,
+        });
     }
 
     #[cfg(debug_assertions)]
@@ -71,6 +77,42 @@ where
     Ok(command)
 }
 
+fn parse_lock_options<I>(mut arguments: I) -> Result<(Option<PathBuf>, bool, bool), ParseError>
+where
+    I: Iterator<Item = String>,
+{
+    let mut config = None;
+    let mut daemonize = false;
+    let mut notify_ready = false;
+
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--config" if config.is_none() => {
+                let path = arguments.next().ok_or_else(|| ParseError {
+                    message: "missing path after `--config`".to_owned(),
+                })?;
+                config = Some(PathBuf::from(path));
+            }
+            "--config" => {
+                return Err(ParseError {
+                    message: "`--config` may only be provided once".to_owned(),
+                });
+            }
+            "--daemonize" if !daemonize && !notify_ready => daemonize = true,
+            "--notify-ready" if !notify_ready && !daemonize => notify_ready = true,
+            "--daemonize" | "--notify-ready" => {
+                return Err(ParseError {
+                    message: "lock readiness mode may only be selected once".to_owned(),
+                });
+            }
+            _ => return Err(ParseError::unknown(&argument)),
+        }
+    }
+
+    Ok((config, daemonize, notify_ready))
+}
+
+#[cfg(debug_assertions)]
 fn parse_config_options<I>(mut arguments: I) -> Result<Option<PathBuf>, ParseError>
 where
     I: Iterator<Item = String>,
@@ -155,7 +197,35 @@ mod tests {
     fn recognizes_authenticated_lock() {
         assert_eq!(
             parse(["--lock".to_owned()]),
-            Ok(Command::Lock { config: None })
+            Ok(Command::Lock {
+                config: None,
+                daemonize: false,
+                notify_ready: false,
+            })
+        );
+    }
+
+    #[test]
+    fn recognizes_daemonized_lock() {
+        assert_eq!(
+            parse(["--lock".to_owned(), "--daemonize".to_owned()]),
+            Ok(Command::Lock {
+                config: None,
+                daemonize: true,
+                notify_ready: false,
+            })
+        );
+    }
+
+    #[test]
+    fn recognizes_internal_ready_notification() {
+        assert_eq!(
+            parse(["--lock".to_owned(), "--notify-ready".to_owned()]),
+            Ok(Command::Lock {
+                config: None,
+                daemonize: false,
+                notify_ready: true,
+            })
         );
     }
 
@@ -184,7 +254,25 @@ mod tests {
             ]),
             Ok(Command::Lock {
                 config: Some("/tmp/luma.toml".into()),
+                daemonize: false,
+                notify_ready: false,
             })
+        );
+    }
+
+    #[test]
+    fn rejects_nested_readiness_modes() {
+        let error = parse([
+            "--lock".to_owned(),
+            "--daemonize".to_owned(),
+            "--notify-ready".to_owned(),
+        ])
+        .expect_err("daemon parent must not request child notification mode");
+
+        assert!(
+            error
+                .to_string()
+                .contains("lock readiness mode may only be selected once")
         );
     }
 
