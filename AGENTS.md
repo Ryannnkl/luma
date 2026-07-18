@@ -53,6 +53,10 @@ protocols, beginning with `ext-session-lock-v1`.
   binary.
 - Follow `docs/TESTING.md` for nested niri setup, watchdog recovery, and the
   real-session test gate.
+- Use `--lock --daemonize` only for callers such as `swayidle -w` that must wait
+  until the lock is visibly established. The parent may exit only after the
+  compositor confirms the lock, every current output has an opaque frame, and
+  the Wayland connection has been flushed. The child remains the real locker.
 - Keep swaylock installed and configured as a recovery option until Luma has been
   exercised successfully in production-like tests.
 

@@ -278,3 +278,33 @@ Only after repeated manual trials and the remaining release-gate tests should
 the normal integrations be changed, one at a time: the explicit niri keybinding,
 then wlogout, and finally swayidle and `before-sleep`. Keep swaylock installed
 through the initial Luma trial period.
+
+### Waiting callers and suspend hooks
+
+An ordinary interactive launcher should run:
+
+```sh
+~/.local/bin/luma --lock
+```
+
+Do not use that command directly for `swayidle -w`'s `before-sleep` event. The
+`-w` option waits for the event command to finish before suspend continues, so a
+foreground locker would block suspend until after the user unlocks. Use the
+readiness-aware parent instead:
+
+```sh
+~/.local/bin/luma --lock --daemonize
+```
+
+The parent must remain blocked until the compositor confirms the lock, every
+current output has an opaque attached frame, and the Wayland connection has been
+flushed. It then exits while the authenticated child continues holding the lock.
+Verify this mode manually before connecting it to `before-sleep`: the command
+invocation should return only after the lock appears, the child should remain
+listed by `pgrep -a -x luma` while locked, and no Luma process should remain after
+a successful unlock.
+
+Suspend/resume is the last integration gate. Save open work, perform one explicit
+suspend test, confirm that Luma is already visible on resume, test one incorrect
+password followed by the correct password, and recheck that no Luma process
+remains. Do not remove swaylock during this trial period.

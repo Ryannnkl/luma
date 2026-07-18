@@ -159,8 +159,8 @@ See [config.example.toml](config.example.toml) for every available field.
 
 ## niri integration
 
-After successful nested and manual tests, change only the explicit keybinding
-first:
+After successful nested and manual tests, the normal niri keybinding can launch
+Luma directly:
 
 ```kdl
 binds {
@@ -170,9 +170,20 @@ binds {
 }
 ```
 
-Keep wlogout, swayidle, and `before-sleep` on swaylock during the initial trial
-period. Promote those integrations one at a time only after repeated successful
-locks. Suspend/resume should be the final integration tested.
+Interactive launchers such as wlogout and Waybar should also run
+`$HOME/.local/bin/luma --lock`. For `swayidle`, use the normal command for an
+idle timeout and the readiness-aware mode for `before-sleep`:
+
+```kdl
+spawn-sh-at-startup "swayidle -w timeout 600 '$HOME/.local/bin/luma --lock' timeout 900 'niri msg action power-off-monitors' before-sleep '$HOME/.local/bin/luma --lock --daemonize'"
+```
+
+`--daemonize` does not weaken or bypass the lock. Its parent waits until niri has
+confirmed the session lock, every current output has an opaque frame, and the
+Wayland connection has been flushed. It then exits so `swayidle -w` can allow
+suspend to continue while the child remains responsible for authentication.
+Keep swaylock installed as a manual recovery option during the initial Luma
+trial period, and test suspend/resume only after the other integrations work.
 
 ## Testing and recovery
 

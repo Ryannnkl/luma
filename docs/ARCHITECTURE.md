@@ -13,6 +13,11 @@ The command paths are intentionally separate:
 - `--lock` is the authenticated path. It loads validated configuration, validates
   `/etc/pam.d/luma`, requests the session lock, and unlocks only after PAM returns
   success. `--config PATH` selects an explicit TOML file.
+- `--lock --daemonize` starts the same authenticated path as a child and waits
+  for its readiness notification. The parent exits only after every current
+  output has an opaque committed frame and the Wayland connection is flushed.
+  This mode exists for waiting callers such as `swayidle -w`; the child remains
+  the locker and has no alternate unlock path.
 - `--lock-smoke` is a bounded protocol test compiled only in debug builds. It
   requires `LUMA_ALLOW_LOCK_SMOKE=1`, unlocks on a timer, and must never be used
   as a production keybinding.
@@ -30,17 +35,20 @@ implementation) follows this sequence:
    compositor and receives an opaque ARGB8888 shared-memory frame.
 5. Add surfaces for outputs appearing during the lock and remove surfaces for
    destroyed outputs.
-6. Receive keyboard text into `InputState`. Backspace removes one Unicode scalar
+6. When readiness notification was requested internally, flush Wayland and
+   notify the waiting parent only after the compositor has confirmed the lock
+   and every current output has an attached opaque frame.
+7. Receive keyboard text into `InputState`. Backspace removes one Unicode scalar
    value; Enter starts an attempt and transfers its token and zeroizing
    `PasswordAttempt` to the PAM worker.
-7. Continue dispatching Wayland while PAM runs. The worker sends only the token
+8. Continue dispatching Wayland while PAM runs. The worker sends only the token
    and a generic result through a `calloop` channel that wakes the event loop.
-8. Apply the result to `AuthenticationState`. Denial and infrastructure failure
+9. Apply the result to `AuthenticationState`. Denial and infrastructure failure
    render the same generic warning, keep the lock active, and enforce the
    progressive bounded cooldown.
-9. Call `unlock_and_destroy` only when the active attempt returns
+10. Call `unlock_and_destroy` only when the active attempt returns
    `UnlockAuthorized`.
-10. Flush the unlock request and exit the client event loop immediately.
+11. Flush the unlock request and exit the client event loop immediately.
 
 `finished` rejects or cancels a lock; it is not sent to acknowledge a
 client-initiated `unlock_and_destroy`. Receiving it without a successful PAM
@@ -129,14 +137,15 @@ These are known follow-up tasks, not reasons to bypass the safety rules:
   that preserves an opaque usable prompt before primary-session use.
 - Output hotplug is handled, but repeated scale, transform, suspend/resume, and
   GPU-loss scenarios still require dedicated tests.
-- The niri keybinding and wlogout integration remain unchanged; swaylock must
-  stay installed as the recovery locker.
+- Automatic suspend locking still needs repeated real suspend/resume tests.
+  Swaylock remains installed as a manual recovery locker during this trial.
 
 ## Verification status
 
-The authenticated path, asynchronous PAM feedback, and optional captured
-background have been exercised in a nested niri under the external watchdog.
-The release binary acquires the nested session lock without a screencopy protocol
-error and builds without the smoke or demo commands. The current suite passes
-`80` tests with cargo fmt, Clippy, and Cargo tests. Primary-session recovery,
-renderer-failure, repeated output-change, and suspend/resume gates remain open.
+The authenticated path, asynchronous PAM feedback, optional captured background,
+and readiness-aware daemon parent have been exercised in a nested niri under the
+external watchdog. Repeated manual primary-session locks also completed without
+leaving a Luma process behind. The release binary builds without the smoke or
+demo commands. The current suite passes `85` tests with cargo fmt, Clippy, and
+Cargo tests. Renderer-failure, repeated output-change, and suspend/resume gates
+remain open.
