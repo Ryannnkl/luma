@@ -17,6 +17,7 @@ feedback over an always-opaque lock surface.
 - [Preview](#preview)
 - [Features](#features)
 - [Installation](#installation)
+- [Uninstallation](#uninstallation)
 - [First run](#first-run)
 - [Configuration](#configuration)
 - [niri integration](#niri-integration)
@@ -80,6 +81,35 @@ can be installed with:
 ```sh
 sudo dnf install pam-libs libxkbcommon
 ```
+
+Distribution packages use the name `lumalock`, while the installed executable
+remains `luma`. This keeps the package name distinctive without breaking Luma
+configuration, commands, or the PAM service name.
+
+## Uninstallation
+
+Before uninstalling, remove Luma from automatic lock hooks such as niri,
+Waybar, wlogout, and `swayidle`. Restore another locker for `before-sleep` so the
+session is not left without automatic locking.
+
+If Luma was installed with the `curl` command above, remove the installed binary
+and PAM policy with:
+
+```sh
+rm -f "${LUMA_INSTALL_DIR:-$HOME/.local/bin}/luma"
+sudo rm -f /etc/pam.d/luma
+```
+
+The user configuration is intentionally preserved. Remove it too only when its
+settings are no longer needed:
+
+```sh
+rm -rf "$HOME/.config/luma"
+```
+
+When Luma is installed from a distribution package, uninstall `lumalock` with
+that distribution's package manager instead; it will remove the files owned by
+the package.
 
 ## First run
 
