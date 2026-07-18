@@ -14,6 +14,7 @@ feedback over an always-opaque lock surface.
 
 ## Table of contents
 
+- [Preview](#preview)
 - [Features](#features)
 - [Installation](#installation)
 - [First run](#first-run)
@@ -30,6 +31,10 @@ feedback over an always-opaque lock surface.
 > primary session, keep swaylock installed as a recovery option, and read the
 > [safe testing guide](docs/TESTING.md) before changing automatic or suspend
 > hooks.
+
+## Preview
+
+![Luma lock screen with a blurred wallpaper, clock, date, and password indicator](docs/assets/luma-lock-screen.png)
 
 ## Features
 
