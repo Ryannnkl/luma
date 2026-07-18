@@ -32,6 +32,9 @@ protocols, beginning with `ext-session-lock-v1`.
 - Load and validate lock configuration before requesting the session lock.
   Configured alpha must be composited into an opaque frame, and
   `[input].enabled = false` must never hide the real authentication prompt.
+- Load every configured clock or date font before requesting the session lock.
+  Accept only absolute paths to regular valid font files, bound each read to 16
+  MiB, and refuse to lock instead of silently replacing an invalid custom font.
 - Keep background capture disabled by default. When explicitly enabled, capture
   every current output before requesting the session lock, keep pixels only in
   memory, exclude the cursor, and refuse to lock if capture fails. Enforce image
@@ -97,8 +100,10 @@ mode must continue to terminate only the named nested test units.
 The real opaque fallback consumes the validated `[input]` configuration for
 position, dimensions, limits, dot geometry, colors, feedback duration, and
 language-neutral visual feedback. It also renders the configured clock and
-optional date with the embedded software font. Real authentication feedback must
-remain iconographic and must not require localization. Demo labels and
+optional date with either the embedded software font or validated independent
+hour, minute, and date fonts. Font selection is presentation-only and must remain
+outside authentication and input state. Real authentication feedback must remain
+iconographic and must not require localization. Demo labels and
 escape-to-close behavior must never enter the release configuration schema.
 
 Optional background capture uses one `zwlr_screencopy_manager_v1` frame per

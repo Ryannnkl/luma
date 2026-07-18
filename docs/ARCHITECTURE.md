@@ -74,9 +74,11 @@ an authentication error as an unlock authorization.
 - The real fallback consumes validated `[input]` geometry, limits, colors, and
   feedback duration. Semi-transparent configured colors are composited over the
   opaque fallback; their alpha is never copied to the lock-surface frame.
-- Clock and optional date text use a validated embedded font and are redrawn once
-  per second. Font loading happens before the session lock is requested, and the
-  authentication prompt is rendered last so configured text cannot cover it.
+- Clock and optional date text use either the validated embedded font or separate
+  configured hour, minute, and date font files. Custom files must be regular,
+  valid, and at most 16 MiB. Every configured font is loaded before the session
+  lock is requested, and the authentication prompt is rendered last so text
+  cannot cover it.
 - `src/wayland/capture.rs` obtains one cursor-free wlr-screencopy frame per
   current output before requesting the lock. It accepts only ARGB8888/XRGB8888
   shared-memory buffers, bounds per-image and aggregate allocations, and maps
@@ -133,5 +135,5 @@ The authenticated path, asynchronous PAM feedback, and optional captured
 background have been exercised in a nested niri under the external watchdog.
 The release binary acquires the nested session lock without a screencopy protocol
 error and builds without the smoke or demo commands. The current suite passes
-`76` tests with cargo fmt, Clippy, and Cargo tests. Primary-session recovery,
+`80` tests with cargo fmt, Clippy, and Cargo tests. Primary-session recovery,
 renderer-failure, repeated output-change, and suspend/resume gates remain open.

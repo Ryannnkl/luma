@@ -192,6 +192,11 @@ prompt. A radius of 0 must remain sharp, a positive radius must visibly blur the
 frame, and the prompt must remain opaque. Invalid radii and capture failures must
 abort before nested niri becomes locked.
 
+For custom typography, test separate absolute TTF/OTF paths for
+`clock.hour_font_path`, `clock.minute_font_path`, and `date.font_path`. Confirm
+that each role uses its selected font. A missing, non-regular, oversized, or
+invalid configured font must abort before the session-lock request.
+
 Confirm that release builds reject the smoke command:
 
 ```sh

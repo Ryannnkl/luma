@@ -61,8 +61,9 @@ script uses the default `~/.config/luma/config.toml` path.
 The configuration controls:
 
 - optional in-memory output capture, software blur, background dimming, and colors;
-- clock visibility, normalized position, size, two-line offsets, formats, and colors;
-- optional date visibility, format, position, size, and color;
+- clock visibility, normalized position, size, two-line offsets, formats, colors,
+  and separate hour/minute fonts;
+- optional date visibility, format, position, size, color, and font;
 - input visibility, position, dimensions, dot behavior, feedback, and colors.
 
 Positions use normalized coordinates from `0.0` to `1.0`. Time and date formats
@@ -88,6 +89,23 @@ The capture happens once per output before the lock request, excludes the cursor
 stays in memory, and is never written to disk. A zero radius keeps the screenshot
 sharp. If enabled capture fails, Luma refuses to lock. Outputs connected after
 capture use the opaque fallback.
+
+Clock colors are independent: `[clock].hour_color` controls the upper value and
+`[clock].minute_color` controls the lower value. Optional absolute TTF/OTF paths
+can select independent fonts:
+
+```toml
+[clock]
+hour_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
+minute_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
+
+[date]
+font_path = "/usr/share/fonts/example/Example-Regular.ttf"
+```
+
+Omit a path to use Luma's embedded font. Configured font files must be regular,
+no larger than 16 MiB, and valid; Luma loads all of them before requesting the
+session lock and refuses to lock when one fails validation.
 
 ## Wayland capability check
 
