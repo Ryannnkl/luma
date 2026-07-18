@@ -1,192 +1,257 @@
 # Luma
 
-Luma is an experimental, customizable Wayland session locker written in Rust.
-Its primary target is niri. Support for other Wayland compositors implementing
-`ext-session-lock-v1` is a secondary, protocol-based goal.
+[![CI](https://github.com/Ryannnkl/luma/actions/workflows/ci.yml/badge.svg)](https://github.com/Ryannnkl/luma/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Ryannnkl/luma)](https://github.com/Ryannnkl/luma/releases/latest)
+[![License](https://img.shields.io/github/license/Ryannnkl/luma)](LICENSE)
+
+Luma is a secure, customizable Wayland session locker written in Rust. It uses
+`ext-session-lock-v1` for real session locking, authenticates through PAM, and is
+designed first for the niri compositor.
+
+It can capture each output before locking, blur the screenshots in memory, and
+render a configurable clock, date, typography, and language-neutral password
+feedback over an always-opaque lock surface.
+
+## Table of contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [First run](#first-run)
+- [Configuration](#configuration)
+- [niri integration](#niri-integration)
+- [Testing and recovery](#testing-and-recovery)
+- [Development](#development)
+- [Security model](#security-model)
+- [Project documentation](#project-documentation)
+- [License](#license)
 
 > [!WARNING]
-> Luma's authenticated lock is still experimental. Test `--lock` only inside a
-> nested compositor or virtual machine; keep swaylock configured as recovery and
-> do not use Luma as the primary session keybinding yet.
+> Luma is experimental. Test it in a nested compositor before using it in your
+> primary session, keep swaylock installed as a recovery option, and read the
+> [safe testing guide](docs/TESTING.md) before changing automatic or suspend
+> hooks.
 
-## Development-only demo
+## Features
 
-The demo displays:
+- Real Wayland session locking through `ext-session-lock-v1`.
+- PAM authentication with zeroizing password memory.
+- One opaque lock surface for every active output.
+- Optional cursor-free screenshot capture and bounded software blur.
+- Configurable clock, date, colors, geometry, formats, and TTF/OTF fonts.
+- Independent fonts and colors for hours, minutes, and the date.
+- Visual loading, failure, and cooldown feedback without localized text.
+- Output hotplug handling with an opaque fallback for uncaptured outputs.
+- `Backspace` removes one character; `Ctrl+Backspace` clears the complete input.
+- Debug-only demo and smoke paths excluded from release builds.
 
-- a responsive two-line clock;
-- a softly blurred abstract background;
-- a dimmed overlay for legibility;
-- a bottom input indicator that stores only a character count;
-- explicit demo feedback instead of authentication.
+## Installation
 
-Run it from a debug build with:
+Prebuilt releases currently support Linux x86_64. Install the latest release
+with:
 
 ```sh
-cargo run -- --demo
+curl -fsSL https://raw.githubusercontent.com/Ryannnkl/luma/main/install.sh | bash
 ```
 
-Use `Backspace` to remove input, `Enter` to preview feedback, and `Escape` to
-close the window. Do not type a real password into development builds.
-The release binary does not contain the demo module and rejects `--demo`.
+The installer:
 
-## Configuration
+1. Downloads the latest binary, PAM policy, and checksums from
+   [GitHub Releases](https://github.com/Ryannnkl/luma/releases/latest).
+2. Verifies the downloaded release assets.
+3. Installs the reviewed PAM policy at `/etc/pam.d/luma`, using `sudo` when the
+   policy is missing or different.
+4. Atomically installs the binary at `~/.local/bin/luma`.
 
-Luma reads `~/.config/luma/config.toml` when it exists. Missing sections and
-fields use built-in defaults, while unknown fields and invalid values produce a
-clear startup error.
+Set `LUMA_INSTALL_DIR` to choose another user-writable binary directory:
 
-Start from the complete example:
+```sh
+curl -fsSL https://raw.githubusercontent.com/Ryannnkl/luma/main/install.sh |
+  LUMA_INSTALL_DIR="$HOME/bin" bash
+```
+
+Luma dynamically uses PAM and libxkbcommon. On Fedora these runtime libraries
+can be installed with:
+
+```sh
+sudo dnf install pam-libs libxkbcommon
+```
+
+## First run
+
+Check the active compositor without locking it:
+
+```sh
+~/.local/bin/luma --check
+~/.local/bin/luma --outputs
+```
+
+Create a user configuration from the complete example:
 
 ```sh
 mkdir -p ~/.config/luma
-cp config.example.toml ~/.config/luma/config.toml
-cargo run -- --demo
+curl -fsSL https://raw.githubusercontent.com/Ryannnkl/luma/main/config.example.toml \
+  -o ~/.config/luma/config.toml
 ```
 
-To test another file without changing the user configuration:
+Do not make Luma your automatic locker yet. Follow the
+[nested-compositor procedure](docs/TESTING.md#authenticated-nested-lock-test),
+verify normal and failed authentication, and only then run one deliberate manual
+trial in the primary session:
 
 ```sh
-cargo run -- --demo --config ./my-theme.toml
+~/.local/bin/luma --lock
 ```
 
-The authenticated path also accepts an explicit validated file:
+## Configuration
 
-```sh
-target/release/luma --lock --config ./my-theme.toml
-```
+Luma reads `~/.config/luma/config.toml`. Missing sections use safe defaults;
+unknown fields and invalid values abort before the session-lock request.
 
-Run that command only inside the guarded nested-compositor procedure. The helper
-script uses the default `~/.config/luma/config.toml` path.
-
-The configuration controls:
-
-- optional in-memory output capture, software blur, background dimming, and colors;
-- clock visibility, normalized position, size, two-line offsets, formats, colors,
-  and separate hour/minute fonts;
-- optional date visibility, format, position, size, color, and font;
-- input visibility, position, dimensions, dot behavior, feedback, and colors.
-
-Positions use normalized coordinates from `0.0` to `1.0`. Time and date formats
-use Chrono/strftime directives: `%H` is a 24-hour value, `%I` is a 12-hour value,
-`%M` is minutes, and `%p` is AM/PM. Colors accept `#RRGGBB` or `#RRGGBBAA`.
-
-The debug-only demo previews these visual sections with a fixed, non-configurable
-development warning. The real opaque fallback uses the configured clock,
-optional date, and `[input]` geometry, limits, colors, duration, and bounded
-authentication animations. It always keeps the authentication prompt visible
-even when `input.enabled` is false.
-
-Background capture is disabled by default. Enable it explicitly and choose a
-software blur radius from 0 through 64 pixels:
+A compact configuration looks like this:
 
 ```toml
 [background]
 capture_enabled = true
 blur_radius = 24
-```
+dim_color = "#00000052"
 
-The capture happens once per output before the lock request, excludes the cursor,
-stays in memory, and is never written to disk. A zero radius keeps the screenshot
-sharp. If enabled capture fails, Luma refuses to lock. Outputs connected after
-capture use the opaque fallback.
-
-Clock colors are independent: `[clock].hour_color` controls the upper value and
-`[clock].minute_color` controls the lower value. Optional absolute TTF/OTF paths
-can select independent fonts:
-
-```toml
 [clock]
-hour_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
-minute_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
+enabled = true
+hour_format = "%H"
+minute_format = "%M"
+hour_color = "#93e6be"
+minute_color = "#f6f8f7"
+# hour_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
+# minute_font_path = "/usr/share/fonts/example/Example-Bold.ttf"
 
 [date]
-font_path = "/usr/share/fonts/example/Example-Regular.ttf"
+enabled = true
+format = "%d/%m/%Y"
+# font_path = "/usr/share/fonts/example/Example-Regular.ttf"
+color = "#f6f8f7dc"
+
+[input]
+enabled = true
+max_characters = 12
 ```
 
-Omit a path to use Luma's embedded font. Configured font files must be regular,
-no larger than 16 MiB, and valid; Luma loads all of them before requesting the
-session lock and refuses to lock when one fails validation.
+Important details:
 
-## Wayland capability check
+- `capture_enabled` is disabled by default. When enabled, capture failure aborts
+  before locking rather than silently showing unexpected content.
+- `blur_radius` accepts values from `0` through `64`; `0` keeps the capture sharp.
+- `hour_color`, `minute_color`, and `date.color` are independent.
+- Font paths are optional, absolute TTF/OTF paths. Each configured font must be a
+  regular valid file no larger than 16 MiB.
+- Time and date formats use Chrono/strftime directives such as `%H`, `%M`, `%p`,
+  `%d`, `%m`, and `%Y`.
+- Colors accept `#RRGGBB` or `#RRGGBBAA`.
+- Positions use normalized coordinates from `0.0` to `1.0`.
+- The real authentication prompt remains visible even if `[input].enabled` is
+  configured as `false`.
 
-Inspect the active compositor without acquiring a session lock:
+See [config.example.toml](config.example.toml) for every available field.
 
-```sh
-cargo run -- --check
+## niri integration
+
+After successful nested and manual tests, change only the explicit keybinding
+first:
+
+```kdl
+binds {
+    Super+Alt+L hotkey-overlay-title="Lock with Luma" {
+        spawn-sh "$HOME/.local/bin/luma --lock"
+    }
+}
 ```
 
-The command reports `ext_session_lock_manager_v1`, compositor and shared-memory
-versions, plus the number of outputs and seats. It exits unsuccessfully when the
-minimum opaque lock-surface foundation is unavailable.
+Keep wlogout, swayidle, and `before-sleep` on swaylock during the initial trial
+period. Promote those integrations one at a time only after repeated successful
+locks. Suspend/resume should be the final integration tested.
 
-List current output metadata without locking:
+## Testing and recovery
 
-```sh
-cargo run -- --outputs
-```
-
-This reports each output's name, logical size, scale, transform, and current
-mode. The same tracker will be used when Luma creates one lock surface per output.
-
-## Experimental authenticated lock
-
-Install the PAM policy described in [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md),
-then run the authenticated path only by following the watchdog procedure in
-[docs/TESTING.md](docs/TESTING.md):
+Real lock testing must start in a nested niri protected by the external
+60-second watchdog:
 
 ```sh
+git clone https://github.com/Ryannnkl/luma.git
+cd luma
 LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
 
-The lock accepts input through Wayland, renders its configured background, clock,
-and optional date, and unlocks only after PAM succeeds. It does not yet provide
-GPU blur, the complete real-lock theme, or production integration with niri and
-wlogout. The test runner starts a new nested niri and an external 60-second
-watchdog; it never adds a timed unlock to Luma.
-
-While the prompt accepts input, `Backspace` removes one Unicode character and
-`Ctrl+Backspace` clears the complete password input with immediate memory
-zeroization.
-
-## User-local installation
-
-Install a reviewed release build at a stable user-local path with:
+Stop the isolated test early with:
 
 ```sh
-./scripts/install-user.sh
+./scripts/test-nested-lock.sh --stop
 ```
 
-The installer uses the locked dependency graph, builds the release target, and
-atomically replaces `~/.local/bin/luma`. Set `LUMA_INSTALL_DIR` to select another
-user-writable directory. Installing the binary does not modify niri, swayidle,
-wlogout, PAM, or the Luma configuration.
+Before a primary-session trial, save open work and verify that you can access a
+TTY and identify the graphical session. Killing a session-lock client is not an
+unlock mechanism; a broken primary-session test may require terminating the
+graphical session and losing unsaved work.
 
-Keep every normal lock action pointed at swaylock during the first real-session
-trial. Follow the TTY recovery gate and manual launch procedure in
-[docs/TESTING.md](docs/TESTING.md); do not point a keybinding at a Cargo `target`
-artifact.
+The complete gates and recovery commands are documented in
+[docs/TESTING.md](docs/TESTING.md).
 
-## Development checks
+## Development
+
+Source builds use stable Rust. Fedora development dependencies include:
+
+```sh
+sudo dnf install cargo rust pam-devel libxkbcommon-devel
+```
+
+Run the project checks with:
 
 ```sh
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test
+cargo test --locked
+cargo build --locked --release
 ```
 
-See [ROADMAP.md](ROADMAP.md) for the staged implementation plan and
-[AGENTS.md](AGENTS.md) for security invariants and contribution rules. Real lock
-work must follow the isolated procedure in [docs/TESTING.md](docs/TESTING.md).
-The current runtime design and known limitations are recorded in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The debug-only visual demo is available with:
 
-## Security status
+```sh
+cargo run -- --demo
+```
 
-Real session locking and PAM authentication remain experimental. A deliberate
-manual primary-session trial is permitted only through the recovery procedure in
-[docs/TESTING.md](docs/TESTING.md); Luma must not replace the normal integrations
-until the release gate in [ROADMAP.md](ROADMAP.md) is satisfied.
+Do not enter a real password in demo mode. It does not acquire a session lock or
+authenticate through PAM, and release builds do not contain it.
+
+Version tags matching `vMAJOR.MINOR.PATCH` trigger the release workflow. GitHub
+Actions builds the x86_64 binary and publishes it with the PAM policy and
+`SHA256SUMS`.
+
+## Security model
+
+Luma treats security-sensitive code separately from presentation:
+
+- Only a successful PAM result associated with the active authentication token
+  can authorize `unlock_and_destroy`.
+- Password contents are never logged or rendered and are cleared after every
+  attempt.
+- PAM runs outside the Wayland rendering loop.
+- Authentication failure categories share the same visual feedback.
+- Release builds contain no timer, escape key, secret bypass, or crash-to-unlock
+  path.
+- Configurations, fonts, PAM policy, and critical rendering resources are
+  validated before requesting the session lock.
+- Screenshots remain in memory, exclude the cursor, and are dropped when Luma
+  exits.
+
+Read [AGENTS.md](AGENTS.md) for the complete safety invariants and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the runtime boundaries.
+
+## Project documentation
+
+- [Roadmap](ROADMAP.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Authentication](docs/AUTHENTICATION.md)
+- [Safe testing](docs/TESTING.md)
+- [Contributor guide](AGENTS.md)
 
 ## License
 
-Luma is licensed under the MIT License.
+Luma is distributed under the [MIT License](LICENSE).
