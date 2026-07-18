@@ -40,10 +40,13 @@ implementation) follows this sequence:
    progressive bounded cooldown.
 9. Call `unlock_and_destroy` only when the active attempt returns
    `UnlockAuthorized`.
+10. Flush the unlock request and exit the client event loop immediately.
 
-`finished` without a successful PAM result is treated as an unsuccessful lock
-run. The client never treats a client crash, Enter alone, a blank password, or
-an authentication error as an unlock authorization.
+`finished` rejects or cancels a lock; it is not sent to acknowledge a
+client-initiated `unlock_and_destroy`. Receiving it without a successful PAM
+result is treated as an unsuccessful lock run. The client never treats a client
+crash, Enter alone, a blank password, or an authentication error as an unlock
+authorization.
 
 ## Security boundaries
 

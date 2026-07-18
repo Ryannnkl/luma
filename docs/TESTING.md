@@ -172,6 +172,16 @@ nested niri window. Verify this prompt sequence for an incorrect password:
 3. A moving six-dot cooldown indicator remains while input is intentionally ignored.
 4. The neutral password dots return when another attempt is allowed.
 
+After a successful unlock, verify from the outer session that the Luma child
+process exited instead of remaining idle behind the unlocked nested compositor:
+
+```sh
+pgrep -a -x luma
+```
+
+The command must not list the PID that handled the completed lock. A lingering
+process fails the authenticated test gate.
+
 Before submitting, confirm that `Backspace` removes one dot and
 `Ctrl+Backspace` clears every visible dot. Neither shortcut may submit an
 authentication attempt or operate while input is intentionally disabled.

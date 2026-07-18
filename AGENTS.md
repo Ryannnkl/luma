@@ -76,6 +76,9 @@ The intended lifecycle is:
 5. Create and render an opaque surface for every active output.
 6. Accept input and authenticate through PAM.
 7. Call `unlock_and_destroy` only after authentication succeeds.
+8. Flush the authenticated unlock request and terminate the client event loop.
+   Do not wait for `finished`; that event rejects or cancels a lock and is not an
+   acknowledgement of a client-initiated unlock.
 
 Authentication state is modeled independently in `src/state.rs`. The Wayland
 client must begin at most one attempt at a time, associate worker results with the
