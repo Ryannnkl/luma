@@ -126,6 +126,10 @@ GPU blur, the complete real-lock theme, or production integration with niri and
 wlogout. The test runner starts a new nested niri and an external 60-second
 watchdog; it never adds a timed unlock to Luma.
 
+While the prompt accepts input, `Backspace` removes one Unicode character and
+`Ctrl+Backspace` clears the complete password input with immediate memory
+zeroization.
+
 ## User-local installation
 
 Install a reviewed release build at a stable user-local path with:

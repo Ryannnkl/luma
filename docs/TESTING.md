@@ -172,6 +172,10 @@ nested niri window. Verify this prompt sequence for an incorrect password:
 3. A moving six-dot cooldown indicator remains while input is intentionally ignored.
 4. The neutral password dots return when another attempt is allowed.
 
+Before submitting, confirm that `Backspace` removes one dot and
+`Ctrl+Backspace` clears every visible dot. Neither shortcut may submit an
+authentication attempt or operate while input is intentionally disabled.
+
 Confirm that every nested output shows the same state and that output handling
 remains responsive while PAM is running. The watchdog closes the nested window
 automatically after 60 seconds. To close it sooner, run this from an outer-session

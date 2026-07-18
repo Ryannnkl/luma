@@ -133,5 +133,5 @@ The authenticated path, asynchronous PAM feedback, and optional captured
 background have been exercised in a nested niri under the external watchdog.
 The release binary acquires the nested session lock without a screencopy protocol
 error and builds without the smoke or demo commands. The current suite passes
-`74` tests with cargo fmt, Clippy, and Cargo tests. Primary-session recovery,
+`76` tests with cargo fmt, Clippy, and Cargo tests. Primary-session recovery,
 renderer-failure, repeated output-change, and suspend/resume gates remain open.
