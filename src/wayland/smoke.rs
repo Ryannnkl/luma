@@ -17,7 +17,7 @@ use smithay_client_toolkit::{
     registry_handlers,
     seat::{
         Capability, SeatHandler, SeatState,
-        keyboard::{KeyEvent, KeyboardHandler, Keysym},
+        keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers},
     },
     session_lock::{
         SessionLock, SessionLockHandler, SessionLockState, SessionLockSurface,
@@ -221,6 +221,7 @@ struct LockState {
     output_state: OutputState,
     seat_state: SeatState,
     keyboard: Option<wayland_client::protocol::wl_keyboard::WlKeyboard>,
+    modifiers: Modifiers,
     input: InputState,
     input_config: InputConfig,
     presentation: Option<LockPresentation>,
@@ -285,6 +286,7 @@ impl LockState {
             output_state: OutputState::new(globals, qh),
             seat_state: SeatState::new(globals, qh),
             keyboard: None,
+            modifiers: Modifiers::default(),
             input: InputState::new(max_characters),
             input_config,
             next_visual_redraw: presentation
@@ -393,6 +395,7 @@ impl SeatHandler for LockState {
     ) {
         if capability == Capability::Keyboard {
             self.keyboard = None;
+            self.modifiers = Modifiers::default();
             self.input.clear();
             self.redraw_input_indicator();
         }
@@ -405,6 +408,7 @@ impl SeatHandler for LockState {
         _seat: wayland_client::protocol::wl_seat::WlSeat,
     ) {
         self.keyboard = None;
+        self.modifiers = Modifiers::default();
         self.input.clear();
         self.redraw_input_indicator();
     }
@@ -431,6 +435,7 @@ impl KeyboardHandler for LockState {
         _surface: &wl_surface::WlSurface,
         _serial: u32,
     ) {
+        self.modifiers = Modifiers::default();
         self.input.clear();
         self.redraw_input_indicator();
     }
@@ -473,10 +478,11 @@ impl KeyboardHandler for LockState {
         _queue_handle: &QueueHandle<Self>,
         _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
         _serial: u32,
-        _modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
+        modifiers: Modifiers,
         _raw_modifiers: smithay_client_toolkit::seat::keyboard::RawModifiers,
         _layout: u32,
     ) {
+        self.modifiers = modifiers;
     }
 }
 
@@ -528,7 +534,7 @@ impl LockState {
             return;
         }
         match event.keysym {
-            Keysym::BackSpace => self.input.backspace(),
+            Keysym::BackSpace => handle_backspace(&mut self.input, self.modifiers.ctrl),
             Keysym::Return => self.submit_authentication(),
             _ => {
                 if let Some(text) = event.utf8 {
@@ -741,6 +747,14 @@ impl LockState {
     }
 }
 
+fn handle_backspace(input: &mut InputState, control: bool) {
+    if control {
+        input.clear();
+    } else {
+        input.backspace();
+    }
+}
+
 const fn prompt_state_for_phase(phase: Option<AuthenticationPhase>) -> PromptState {
     match phase {
         None | Some(AuthenticationPhase::Idle) => PromptState::Ready,
@@ -813,9 +827,29 @@ delegate_noop!(LockState: ignore wl_surface::WlSurface);
 
 #[cfg(test)]
 mod tests {
-    use crate::{state::AuthenticationPhase, wayland::opaque::PromptState};
+    use crate::{input::InputState, state::AuthenticationPhase, wayland::opaque::PromptState};
 
-    use super::prompt_state_for_phase;
+    use super::{handle_backspace, prompt_state_for_phase};
+
+    #[test]
+    fn control_backspace_clears_the_password_input() {
+        let mut input = InputState::new(12);
+        input.push_text("secret");
+
+        handle_backspace(&mut input, true);
+
+        assert!(input.is_empty());
+    }
+
+    #[test]
+    fn backspace_without_control_removes_one_character() {
+        let mut input = InputState::new(12);
+        input.push_text("secret");
+
+        handle_backspace(&mut input, false);
+
+        assert_eq!(input.character_count(), 5);
+    }
 
     #[test]
     #[cfg(debug_assertions)]
