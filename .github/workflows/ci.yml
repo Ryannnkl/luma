@@ -33,6 +33,9 @@ jobs:
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
 
+      - name: Check shell script syntax
+        run: bash -n install.sh scripts/*.sh
+
       - name: Check formatting
         run: cargo fmt --check
 
