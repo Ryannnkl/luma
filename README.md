@@ -56,6 +56,20 @@ Distribution packages use the name `lumalock`, while the installed executable
 remains `luma`. This keeps the package name distinctive without breaking Luma
 configuration, commands, or the PAM service name.
 
+### Fedora (COPR)
+
+The official Luma COPR currently provides Fedora 44 x86_64 packages. Enable
+the repository and install `lumalock` with:
+
+```sh
+sudo dnf copr enable ryannnkl/lumalock
+sudo dnf install lumalock
+```
+
+The package is built by Fedora COPR from the tagged source and locked,
+vendored Rust dependencies. It installs the executable at `/usr/bin/luma` and
+the PAM policy at `/etc/pam.d/luma`.
+
 ### Arch Linux (AUR)
 
 Install [`lumalock`](https://aur.archlinux.org/packages/lumalock) with an AUR
@@ -114,6 +128,14 @@ sudo dnf install pam-libs libxkbcommon
 Before uninstalling, remove Luma from automatic lock hooks such as niri,
 Waybar, wlogout, and `swayidle`. Restore another locker for `before-sleep` so the
 session is not left without automatic locking.
+
+If Luma was installed from Fedora COPR, remove the package and disable its
+repository with:
+
+```sh
+sudo dnf remove lumalock
+sudo dnf copr disable ryannnkl/lumalock
+```
 
 If Luma was installed from the AUR, remove the package with:
 
