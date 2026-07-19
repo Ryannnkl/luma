@@ -120,6 +120,23 @@ and discarded when the lock process exits. Capture failures while enabled are
 pre-lock errors; never silently downgrade a requested capture on an existing
 output after acquiring the lock.
 
+## Distribution
+
+- The public package name is `lumalock`; the executable and PAM service remain
+  `luma`.
+- Keep the Arch recipe in `packaging/aur` and the Fedora recipe in
+  `packaging/fedora` synchronized with tagged releases.
+- Fedora builds use locked vendored dependencies. Generate the release asset with
+  `scripts/create-vendor-archive.sh`, never commit the resulting archive, and
+  keep network access disabled in the COPR build.
+- The public Fedora repository is COPR `ryannnkl/lumalock`. The initial supported
+  chroot is `fedora-44-x86_64`.
+- Keep `/etc/pam.d/luma` marked as a preserved configuration file in distribution
+  packages. Package installation must never overwrite a locally modified PAM
+  policy without the package manager's normal configuration-file safeguards.
+- Follow `docs/DISTRIBUTION.md` for release assets, package validation, AUR, and
+  COPR publishing.
+
 ## Development workflow
 
 - Use stable Rust and keep `cargo fmt`, `cargo clippy`, and tests passing.

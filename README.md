@@ -343,6 +343,7 @@ Read [AGENTS.md](AGENTS.md) for the complete safety invariants and
 - [Architecture](docs/ARCHITECTURE.md)
 - [Authentication](docs/AUTHENTICATION.md)
 - [Safe testing](docs/TESTING.md)
+- [Distribution](docs/DISTRIBUTION.md)
 - [Contributor guide](AGENTS.md)
 
 ## License
