@@ -52,8 +52,35 @@ feedback over an always-opaque lock surface.
 
 ## Installation
 
+Distribution packages use the name `lumalock`, while the installed executable
+remains `luma`. This keeps the package name distinctive without breaking Luma
+configuration, commands, or the PAM service name.
+
+### Arch Linux (AUR)
+
+Install [`lumalock`](https://aur.archlinux.org/packages/lumalock) with an AUR
+helper:
+
+```sh
+yay -S lumalock
+```
+
+Or build the reviewed recipe directly with the standard Arch tools:
+
+```sh
+git clone https://aur.archlinux.org/lumalock.git
+cd lumalock
+makepkg -si
+```
+
+The package builds the tagged source with its locked Rust dependencies and
+installs the executable at `/usr/bin/luma` and the PAM policy at
+`/etc/pam.d/luma`.
+
+### Prebuilt release
+
 Prebuilt releases currently support Linux x86_64. Install the latest release
-with:
+from GitHub with:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Ryannnkl/luma/main/install.sh | bash
@@ -82,18 +109,20 @@ can be installed with:
 sudo dnf install pam-libs libxkbcommon
 ```
 
-Distribution packages use the name `lumalock`, while the installed executable
-remains `luma`. This keeps the package name distinctive without breaking Luma
-configuration, commands, or the PAM service name.
-
 ## Uninstallation
 
 Before uninstalling, remove Luma from automatic lock hooks such as niri,
 Waybar, wlogout, and `swayidle`. Restore another locker for `before-sleep` so the
 session is not left without automatic locking.
 
+If Luma was installed from the AUR, remove the package with:
+
+```sh
+sudo pacman -Rns lumalock
+```
+
 If Luma was installed with the `curl` command above, remove the installed binary
-and PAM policy with:
+and PAM policy manually with:
 
 ```sh
 rm -f "${LUMA_INSTALL_DIR:-$HOME/.local/bin}/luma"
@@ -107,17 +136,13 @@ settings are no longer needed:
 rm -rf "$HOME/.config/luma"
 ```
 
-When Luma is installed from a distribution package, uninstall `lumalock` with
-that distribution's package manager instead; it will remove the files owned by
-the package.
-
 ## First run
 
 Check the active compositor without locking it:
 
 ```sh
-~/.local/bin/luma --check
-~/.local/bin/luma --outputs
+luma --check
+luma --outputs
 ```
 
 Create a user configuration from the complete example:
@@ -134,7 +159,7 @@ verify normal and failed authentication, and only then run one deliberate manual
 trial in the primary session:
 
 ```sh
-~/.local/bin/luma --lock
+luma --lock
 ```
 
 ## Configuration
@@ -195,17 +220,17 @@ Luma directly:
 ```kdl
 binds {
     Super+Alt+L hotkey-overlay-title="Lock with Luma" {
-        spawn-sh "$HOME/.local/bin/luma --lock"
+        spawn "luma" "--lock"
     }
 }
 ```
 
-Interactive launchers such as wlogout and Waybar should also run
-`$HOME/.local/bin/luma --lock`. For `swayidle`, use the normal command for an
-idle timeout and the readiness-aware mode for `before-sleep`:
+Interactive launchers such as wlogout and Waybar should also run `luma --lock`.
+For `swayidle`, use the normal command for an idle timeout and the
+readiness-aware mode for `before-sleep`:
 
 ```kdl
-spawn-sh-at-startup "swayidle -w timeout 600 '$HOME/.local/bin/luma --lock' timeout 900 'niri msg action power-off-monitors' before-sleep '$HOME/.local/bin/luma --lock --daemonize'"
+spawn-sh-at-startup "swayidle -w timeout 600 'luma --lock' timeout 900 'niri msg action power-off-monitors' before-sleep 'luma --lock --daemonize'"
 ```
 
 `--daemonize` does not weaken or bypass the lock. Its parent waits until niri has
