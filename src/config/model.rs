@@ -64,6 +64,20 @@ impl Config {
         validate_position(self.input.x, self.input.y, "input")?;
         validate_range(self.input.width, 24.0..=2_048.0, "input.width")?;
         validate_range(self.input.height, 16.0..=512.0, "input.height")?;
+        validate_range(self.input.corner_radius, 0.0..=256.0, "input.corner_radius")?;
+        if self.input.corner_radius > self.input.width.min(self.input.height) / 2.0 {
+            return Err(ValidationError::new(
+                "input.corner_radius",
+                "must not exceed half the shortest input dimension",
+            ));
+        }
+        validate_range(self.input.border_width, 0.0..=64.0, "input.border_width")?;
+        if self.input.border_width > self.input.width.min(self.input.height) / 2.0 {
+            return Err(ValidationError::new(
+                "input.border_width",
+                "must not exceed half the shortest input dimension",
+            ));
+        }
         validate_usize(self.input.max_characters, 1..=64, "input.max_characters")?;
         validate_usize(self.input.min_dots, 0..=64, "input.min_dots")?;
         if self.input.min_dots > self.input.max_characters {
@@ -262,6 +276,9 @@ pub struct InputConfig {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    pub corner_radius: f32,
+    pub border_width: f32,
+    pub border_color: Color,
     pub max_characters: usize,
     pub min_dots: usize,
     pub dot_spacing: f32,
@@ -284,6 +301,9 @@ impl Default for InputConfig {
             y: 0.925,
             width: 156.0,
             height: 34.0,
+            corner_radius: 0.0,
+            border_width: 0.0,
+            border_color: Color::rgba(255, 255, 255, 48),
             max_characters: 12,
             min_dots: 6,
             dot_spacing: 10.0,
@@ -366,6 +386,27 @@ mod tests {
             .expect_err("minimum dots cannot exceed the input limit");
 
         assert_eq!(error.field, "input.min_dots");
+    }
+
+    #[test]
+    fn rejects_input_shape_larger_than_its_geometry() {
+        let mut config = Config::default();
+        config.input.corner_radius = config.input.height;
+
+        let error = config
+            .validate()
+            .expect_err("corner radius must fit inside the input");
+
+        assert_eq!(error.field, "input.corner_radius");
+
+        let mut config = Config::default();
+        config.input.border_width = config.input.height;
+
+        let error = config
+            .validate()
+            .expect_err("border width must fit inside the input");
+
+        assert_eq!(error.field, "input.border_width");
     }
 
     #[test]

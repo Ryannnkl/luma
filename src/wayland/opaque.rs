@@ -93,16 +93,7 @@ pub(crate) fn draw_lock_prompt(
         PromptState::Ready | PromptState::Authenticating => ready_background,
         PromptState::Failure | PromptState::Cooldown => feedback_background,
     };
-    fill_rect(
-        canvas,
-        width,
-        height,
-        prompt.x,
-        prompt.y,
-        prompt.width,
-        prompt.height,
-        prompt_background,
-    );
+    fill_prompt(canvas, width, height, prompt, prompt_background, config);
 
     match prompt_state {
         PromptState::Ready => {
@@ -275,7 +266,7 @@ pub(crate) fn draw_lock_visual_feedback(
     );
     match prompt_state {
         PromptState::Authenticating => {
-            fill_prompt(canvas, width, height, prompt, ready_background);
+            fill_prompt(canvas, width, height, prompt, ready_background, config);
             draw_loading_dots(
                 canvas,
                 width,
@@ -287,14 +278,14 @@ pub(crate) fn draw_lock_visual_feedback(
             );
         }
         PromptState::Failure => {
-            fill_prompt(canvas, width, height, prompt, feedback_background);
+            fill_prompt(canvas, width, height, prompt, feedback_background, config);
             let shifted = shifted_error_rectangle(prompt, frame);
             let accent = opaque_over(Rgba::from_config(config.error_color), feedback_background);
             draw_border(canvas, width, height, shifted, accent);
             draw_cross(canvas, width, height, shifted, accent);
         }
         PromptState::Cooldown => {
-            fill_prompt(canvas, width, height, prompt, feedback_background);
+            fill_prompt(canvas, width, height, prompt, feedback_background, config);
             draw_cooldown_dots(
                 canvas,
                 width,
@@ -309,16 +300,41 @@ pub(crate) fn draw_lock_visual_feedback(
     }
 }
 
-fn fill_prompt(canvas: &mut [u8], width: usize, height: usize, prompt: Rectangle, color: Rgba) {
-    fill_rect(
+fn fill_prompt(
+    canvas: &mut [u8],
+    width: usize,
+    height: usize,
+    prompt: Rectangle,
+    background: Rgba,
+    config: &InputConfig,
+) {
+    let radius = rounded_nonnegative_size(config.corner_radius);
+    let border_width = rounded_nonnegative_size(config.border_width)
+        .min(prompt.width / 2)
+        .min(prompt.height / 2);
+
+    if border_width == 0 {
+        fill_rounded_rect(canvas, width, height, prompt, radius, background);
+        return;
+    }
+
+    let border = opaque_over(Rgba::from_config(config.border_color), background);
+    fill_rounded_rect(canvas, width, height, prompt, radius, border);
+
+    let inset = border_width.saturating_mul(2);
+    let inner = Rectangle {
+        x: prompt.x.saturating_add(border_width),
+        y: prompt.y.saturating_add(border_width),
+        width: prompt.width.saturating_sub(inset),
+        height: prompt.height.saturating_sub(inset),
+    };
+    fill_rounded_rect(
         canvas,
         width,
         height,
-        prompt.x,
-        prompt.y,
-        prompt.width,
-        prompt.height,
-        color,
+        inner,
+        radius.saturating_sub(border_width),
+        background,
     );
 }
 
@@ -622,6 +638,11 @@ fn rounded_size(value: f32) -> usize {
     (value.round() as usize).max(1)
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn rounded_nonnegative_size(value: f32) -> usize {
+    value.round() as usize
+}
+
 fn fitted_spacing(
     prompt: Rectangle,
     dot_count: usize,
@@ -688,6 +709,57 @@ fn fill_rect(
     for row in y.min(height)..end_y {
         for column in x.min(width)..end_x {
             set_pixel(canvas, width, column, row, color);
+        }
+    }
+}
+
+fn fill_rounded_rect(
+    canvas: &mut [u8],
+    width: usize,
+    height: usize,
+    rectangle: Rectangle,
+    radius: usize,
+    color: Rgba,
+) {
+    let radius = radius.min(rectangle.width / 2).min(rectangle.height / 2);
+    if radius == 0 {
+        fill_rect(
+            canvas,
+            width,
+            height,
+            rectangle.x,
+            rectangle.y,
+            rectangle.width,
+            rectangle.height,
+            color,
+        );
+        return;
+    }
+
+    let end_x = rectangle.x.saturating_add(rectangle.width).min(width);
+    let end_y = rectangle.y.saturating_add(rectangle.height).min(height);
+    let diameter = radius.saturating_mul(2);
+    let radius_squared = diameter.saturating_mul(diameter);
+
+    for y in rectangle.y.min(height)..end_y {
+        for x in rectangle.x.min(width)..end_x {
+            let local_x = x.saturating_sub(rectangle.x);
+            let local_y = y.saturating_sub(rectangle.y);
+            let mirrored_x = rectangle.width.saturating_sub(local_x).saturating_sub(1);
+            let mirrored_y = rectangle.height.saturating_sub(local_y).saturating_sub(1);
+            let corner_x = local_x.min(mirrored_x);
+            let corner_y = local_y.min(mirrored_y);
+
+            if corner_x >= radius || corner_y >= radius {
+                set_pixel(canvas, width, x, y, color);
+                continue;
+            }
+
+            let dx = diameter.saturating_sub(corner_x.saturating_mul(2).saturating_add(1));
+            let dy = diameter.saturating_sub(corner_y.saturating_mul(2).saturating_add(1));
+            if dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy)) <= radius_squared {
+                set_pixel(canvas, width, x, y, color);
+            }
         }
     }
 }
@@ -908,6 +980,62 @@ mod tests {
         assert_eq!(
             canvas[old_prompt_center..old_prompt_center + 4],
             encoded(BACKGROUND)
+        );
+    }
+
+    #[test]
+    fn applies_configured_prompt_rounding() {
+        let width = 200;
+        let height = 120;
+        let config = InputConfig {
+            x: 0.5,
+            y: 0.5,
+            width: 80.0,
+            height: 20.0,
+            corner_radius: 10.0,
+            background_color: Color::rgb(11, 22, 33),
+            ..InputConfig::default()
+        };
+        let mut canvas = vec![0; width * height * 4];
+
+        draw_lock_frame(&mut canvas, 200, 120, 0, PromptState::Ready, &config);
+
+        let corner = (50 * width + 60) * 4;
+        let top_center = (50 * width + 100) * 4;
+        assert_eq!(canvas[corner..corner + 4], encoded(BACKGROUND));
+        assert_eq!(
+            canvas[top_center..top_center + 4],
+            encoded(Rgba::new(11, 22, 33, 255))
+        );
+    }
+
+    #[test]
+    fn applies_configured_prompt_border() {
+        let width = 200;
+        let height = 120;
+        let config = InputConfig {
+            x: 0.5,
+            y: 0.5,
+            width: 80.0,
+            height: 20.0,
+            border_width: 2.0,
+            border_color: Color::rgb(44, 55, 66),
+            background_color: Color::rgb(11, 22, 33),
+            ..InputConfig::default()
+        };
+        let mut canvas = vec![0; width * height * 4];
+
+        draw_lock_frame(&mut canvas, 200, 120, 0, PromptState::Ready, &config);
+
+        let border = (50 * width + 100) * 4;
+        let center = (60 * width + 100) * 4;
+        assert_eq!(
+            canvas[border..border + 4],
+            encoded(Rgba::new(44, 55, 66, 255))
+        );
+        assert_eq!(
+            canvas[center..center + 4],
+            encoded(Rgba::new(11, 22, 33, 255))
         );
     }
 

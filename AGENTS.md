@@ -105,12 +105,12 @@ arms an external 60-second systemd watchdog before launching Luma. Its `--stop`
 mode must continue to terminate only the named nested test units.
 
 The real opaque fallback consumes the validated `[input]` configuration for
-position, dimensions, limits, dot geometry, colors, feedback duration, and
-language-neutral visual feedback. It also renders the configured clock and
-optional date with either the embedded software font or validated independent
-hour, minute, and date fonts. Font selection is presentation-only and must remain
-outside authentication and input state. Real authentication feedback must remain
-iconographic and must not require localization. Demo labels and
+position, dimensions, shape, border, limits, dot geometry, colors, feedback
+duration, and language-neutral visual feedback. It also renders the configured
+clock and optional date with either the embedded software font or validated
+independent hour, minute, and date fonts. Font selection is presentation-only and
+must remain outside authentication and input state. Real authentication feedback
+must remain iconographic and must not require localization. Demo labels and
 escape-to-close behavior must never enter the release configuration schema.
 
 Optional background capture uses one `zwlr_screencopy_manager_v1` frame per

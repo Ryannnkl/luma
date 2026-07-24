@@ -214,6 +214,9 @@ color = "#f6f8f7dc"
 
 [input]
 enabled = true
+corner_radius = 17.0
+border_width = 0.0
+border_color = "#ffffff30"
 max_characters = 12
 ```
 
@@ -229,6 +232,10 @@ Important details:
   `%d`, `%m`, and `%Y`.
 - Colors accept `#RRGGBB` or `#RRGGBBAA`.
 - Positions use normalized coordinates from `0.0` to `1.0`.
+- `input.corner_radius` and `input.border_width` use logical pixels. Neither may
+  exceed half of the input's shortest dimension.
+- `input.border_color` supports alpha and is composited into the opaque lock
+  frame.
 - The real authentication prompt remains visible even if `[input].enabled` is
   configured as `false`.
 

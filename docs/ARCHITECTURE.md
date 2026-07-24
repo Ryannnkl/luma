@@ -82,9 +82,10 @@ authorization.
   60-second systemd watchdog stops the named nested niri service rather than
   sending an unlock request. The production binary contains no corresponding
   timer or environment-variable gate.
-- The real fallback consumes validated `[input]` geometry, limits, colors, and
-  feedback duration. Semi-transparent configured colors are composited over the
-  opaque fallback; their alpha is never copied to the lock-surface frame.
+- The real fallback consumes validated `[input]` geometry, shape, border, limits,
+  colors, and feedback duration. Semi-transparent configured colors are
+  composited over the opaque fallback; their alpha is never copied to the
+  lock-surface frame.
 - Clock and optional date text use either the validated embedded font or separate
   configured hour, minute, and date font files. Custom files must be regular,
   valid, and at most 16 MiB. Every configured font is loaded before the session
