@@ -26,7 +26,8 @@ jobs:
           sudo apt-get install --no-install-recommends --yes \
             libpam0g-dev \
             libxkbcommon-dev \
-            pkg-config
+            pkg-config \
+            shellcheck
 
       - name: Install stable Rust
         run: |
@@ -34,7 +35,13 @@ jobs:
           rustup default stable
 
       - name: Check shell script syntax
-        run: bash -n install.sh scripts/*.sh
+        run: |
+          bash -n install.sh scripts/*.sh
+          shellcheck \
+            scripts/build-fedora-package.sh \
+            scripts/prepare-release.sh \
+            scripts/start-release.sh \
+            scripts/update-aur-package.sh
 
       - name: Check formatting
         run: cargo fmt --check

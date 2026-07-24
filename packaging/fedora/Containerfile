@@ -1,0 +1,15 @@
+FROM registry.fedoraproject.org/fedora:44@sha256:026208e70f6dbfe4d970e76f885e7dd1c298480b82ec19990a4cf4a48684733a
+
+RUN dnf install --assumeyes --setopt=install_weak_deps=False \
+        cargo \
+        cargo-rpm-macros \
+        cargo2rpm \
+        gcc \
+        git \
+        libxkbcommon-devel \
+        pam-devel \
+        rpm-build \
+        rpmlint \
+        rust \
+        xz \
+    && dnf clean all

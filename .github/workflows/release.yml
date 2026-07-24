@@ -1,20 +1,83 @@
-name: Release
+name: Publish release
 
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the leading v
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+env:
+  ARCH_IMAGE: docker.io/library/archlinux:base-devel@sha256:bf0af8920a0e70715207d9c4f463ebac321db72748db2b8a391b639696965d87
+  CARGO_TERM_COLOR: always
+  FEDORA_IMAGE: registry.fedoraproject.org/fedora:44@sha256:026208e70f6dbfe4d970e76f885e7dd1c298480b82ec19990a4cf4a48684733a
+  RELEASE_VERSION: ${{ inputs.version }}
 
 jobs:
-  release:
-    name: Linux x86_64 release
+  validate:
+    name: Validate release
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release metadata
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use MAJOR.MINOR.PATCH without a leading v." >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Releases must run from the main branch." >&2
+            exit 1
+          fi
+
+          manifest_version=$(sed -n \
+            '/^\[package\]/,/^\[/s/^version = "\([^"]*\)"/\1/p' \
+            Cargo.toml)
+          lock_version=$(awk '
+            $0 == "name = \"luma\"" {
+              found = 1
+              next
+            }
+            found && /^version = "/ {
+              gsub(/^version = "|"$|"/, "")
+              print
+              exit
+            }
+          ' Cargo.lock)
+          spec_version=$(sed -n 's/^Version:[[:space:]]*//p' \
+            packaging/fedora/lumalock.spec)
+
+          for candidate in "$manifest_version" "$lock_version" "$spec_version"; do
+            if [[ "$candidate" != "$RELEASE_VERSION" ]]; then
+              echo "Release metadata does not consistently use $RELEASE_VERSION." >&2
+              exit 1
+            fi
+          done
+
+          git fetch --force --tags origin
+          if git rev-parse --verify --quiet "refs/tags/v$RELEASE_VERSION" >/dev/null; then
+            tag_commit=$(git rev-list -n 1 "v$RELEASE_VERSION")
+            if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+              echo "Tag v$RELEASE_VERSION points to a different commit." >&2
+              exit 1
+            fi
+          fi
 
       - name: Install native dependencies
         run: |
@@ -22,35 +85,414 @@ jobs:
           sudo apt-get install --no-install-recommends --yes \
             libpam0g-dev \
             libxkbcommon-dev \
-            pkg-config
+            pkg-config \
+            shellcheck
 
       - name: Install stable Rust
         run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
-          rustup target add x86_64-unknown-linux-gnu
+
+      - name: Check shell scripts
+        run: |
+          bash -n install.sh scripts/*.sh
+          shellcheck \
+            scripts/build-fedora-package.sh \
+            scripts/prepare-release.sh \
+            scripts/start-release.sh \
+            scripts/update-aur-package.sh
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --locked
 
       - name: Build release binary
-        run: cargo build --locked --release --target x86_64-unknown-linux-gnu
+        run: cargo build --locked --release
+
+      - name: Reject debug-only release paths
+        run: |
+          set -euo pipefail
+          if grep -aEq -- \
+            '--demo|--lock-smoke|LUMA_ALLOW_NESTED_TEST' \
+            target/release/luma; then
+            echo "Release binary contains debug-only markers." >&2
+            exit 1
+          fi
+
+      - name: Build Fedora packaging environment
+        run: |
+          docker build \
+            --tag lumalock-fedora-builder:"$RELEASE_VERSION" \
+            --file packaging/fedora/Containerfile \
+            packaging/fedora
 
       - name: Prepare release assets
         run: |
-          install -Dm755 \
-            target/x86_64-unknown-linux-gnu/release/luma \
-            dist/luma-x86_64-unknown-linux-gnu
-          install -Dm644 pam/luma dist/luma.pam
-          cd dist
-          sha256sum luma-x86_64-unknown-linux-gnu luma.pam > SHA256SUMS
+          set -euo pipefail
+          mkdir -p dist
 
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          source_date_epoch=$(git show -s --format=%ct HEAD)
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/tmp \
+            --env SOURCE_DATE_EPOCH="$source_date_epoch" \
+            --volume "$PWD:/workspace" \
+            --workdir /workspace \
+            lumalock-fedora-builder:"$RELEASE_VERSION" \
+            scripts/create-vendor-archive.sh \
+            "$RELEASE_VERSION" \
+            "/workspace/dist/luma-$RELEASE_VERSION-vendor.tar.xz"
+
+          install -Dm0755 \
+            target/release/luma \
+            dist/luma-x86_64-unknown-linux-gnu
+          install -Dm0644 pam/luma dist/luma.pam
+
+          (
+            cd dist
+            sha256sum \
+              "luma-$RELEASE_VERSION-vendor.tar.xz" \
+              luma-x86_64-unknown-linux-gnu \
+              luma.pam \
+              >SHA256SUMS
+          )
+
+      - name: Upload validated release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets-${{ inputs.version }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish distributions
+    needs: validate
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+      AUR_KNOWN_HOSTS: ${{ secrets.AUR_KNOWN_HOSTS }}
+      COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download validated release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets-${{ inputs.version }}
+          path: dist
+
+      - name: Configure GitHub authentication
+        run: gh auth setup-git
+
+      - name: Create tag and GitHub release
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            dist/luma-x86_64-unknown-linux-gnu \
-            dist/luma.pam \
-            dist/SHA256SUMS \
-            --repo "${GITHUB_REPOSITORY}" \
-            --verify-tag \
-            --generate-notes \
-            --title "Luma ${GITHUB_REF_NAME}"
+          set -euo pipefail
+          tag="v$RELEASE_VERSION"
+
+          git fetch --force --tags origin
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            tag_commit=$(git rev-list -n 1 "$tag")
+            if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+              echo "Existing tag $tag points to a different commit." >&2
+              exit 1
+            fi
+          else
+            git \
+              -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag --annotate "$tag" --message "Luma $tag"
+            git push origin "refs/tags/$tag"
+          fi
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$tag" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --generate-notes \
+              --title "Luma $tag"
+          fi
+
+      - name: Prepare and validate Arch package
+        run: |
+          set -euo pipefail
+          source_archive="$RUNNER_TEMP/luma-$RELEASE_VERSION.tar.gz"
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            "https://github.com/$GITHUB_REPOSITORY/archive/refs/tags/v$RELEASE_VERSION.tar.gz" \
+            --output "$source_archive"
+          source_sha256=$(sha256sum "$source_archive" | awk '{ print $1 }')
+
+          mkdir -p dist/aur
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO dist/aur/
+
+          docker run --rm \
+            --env RELEASE_VERSION \
+            --env SOURCE_SHA256="$source_sha256" \
+            --volume "$PWD:/repo" \
+            --workdir /repo \
+            "$ARCH_IMAGE" \
+            bash -lc '
+              set -euo pipefail
+              workspace_uid=$(stat -c %u /repo)
+              workspace_gid=$(stat -c %g /repo)
+              trap \
+                "chown -R $workspace_uid:$workspace_gid /repo/dist/aur" \
+                EXIT
+
+              pacman -Syu --noconfirm --needed \
+                git \
+                libxkbcommon \
+                pam \
+                rust
+              useradd --create-home builder
+              chown -R builder:builder /repo/dist/aur
+              su builder -c \
+                "/repo/scripts/update-aur-package.sh \
+                  \"$RELEASE_VERSION\" \
+                  \"$SOURCE_SHA256\" \
+                  /repo/dist/aur"
+              su builder -c \
+                "cd /repo/dist/aur && makepkg --cleanbuild --noconfirm"
+
+              package=$(find /repo/dist/aur \
+                -maxdepth 1 \
+                -type f \
+                -name "lumalock-[0-9]*.pkg.tar.zst" \
+                -print \
+                -quit)
+              if [[ -z "$package" ]]; then
+                echo "Arch package was not created." >&2
+                exit 1
+              fi
+
+              pacman -U --noconfirm "$package"
+              /usr/bin/luma --version
+              pacman -Qo /usr/bin/luma /etc/pam.d/luma
+              if grep -aEq -- \
+                "--demo|--lock-smoke|LUMA_ALLOW_NESTED_TEST" \
+                /usr/bin/luma; then
+                echo "Arch release contains debug-only markers." >&2
+                exit 1
+              fi
+              pacman -Rns --noconfirm lumalock
+              if command -v luma >/dev/null; then
+                echo "Arch package removal left the binary installed." >&2
+                exit 1
+              fi
+            '
+
+      - name: Synchronize Arch recipe to main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git switch --force-create release-sync origin/main
+          cp dist/aur/PKGBUILD packaging/aur/PKGBUILD
+          cp dist/aur/.SRCINFO packaging/aur/.SRCINFO
+          git add packaging/aur/PKGBUILD packaging/aur/.SRCINFO
+
+          if git diff --cached --quiet; then
+            echo "Arch recipe is already synchronized."
+          else
+            git \
+              -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "build: update Arch package to $RELEASE_VERSION"
+            git push origin HEAD:main
+          fi
+
+      - name: Configure AUR authentication
+        run: |
+          set -euo pipefail
+          if [[ -z "$AUR_SSH_PRIVATE_KEY" || -z "$AUR_KNOWN_HOSTS" ]]; then
+            echo "AUR release secrets are not configured." >&2
+            exit 1
+          fi
+
+          install -d -m 0700 "$HOME/.ssh"
+          umask 077
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" >"$HOME/.ssh/aur"
+          printf '%s\n' "$AUR_KNOWN_HOSTS" >"$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/aur" "$HOME/.ssh/known_hosts"
+
+      - name: Publish Arch package to the AUR
+        env:
+          GIT_SSH_COMMAND: >-
+            ssh -i ~/.ssh/aur -o IdentitiesOnly=yes
+            -o UserKnownHostsFile=~/.ssh/known_hosts
+        run: |
+          set -euo pipefail
+          aur_dir=$(mktemp -d)
+          git clone \
+            ssh://aur@aur.archlinux.org/lumalock.git \
+            "$aur_dir"
+          cp dist/aur/PKGBUILD "$aur_dir/PKGBUILD"
+          cp dist/aur/.SRCINFO "$aur_dir/.SRCINFO"
+          git -C "$aur_dir" add PKGBUILD .SRCINFO
+
+          if git -C "$aur_dir" diff --cached --quiet; then
+            echo "AUR package is already at $RELEASE_VERSION."
+          else
+            git -C "$aur_dir" \
+              -c user.name='Ryannnkl' \
+              -c user.email='ryannnkl@gmail.com' \
+              commit -m "build: publish lumalock $RELEASE_VERSION"
+            git -C "$aur_dir" push origin master
+          fi
+
+      - name: Build Fedora packages without network access
+        run: |
+          set -euo pipefail
+          source_archive="$RUNNER_TEMP/luma-$RELEASE_VERSION.tar.gz"
+          vendor_archive="$PWD/dist/luma-$RELEASE_VERSION-vendor.tar.xz"
+
+          if [[ ! -f "$source_archive" || ! -f "$vendor_archive" ]]; then
+            echo "Fedora release sources are missing." >&2
+            exit 1
+          fi
+
+          docker build \
+            --tag lumalock-fedora-builder:"$RELEASE_VERSION" \
+            --file packaging/fedora/Containerfile \
+            packaging/fedora
+
+          mkdir -p dist/fedora
+          docker run --rm \
+            --network none \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/tmp \
+            --volume "$PWD:/workspace" \
+            --volume "$RUNNER_TEMP:$RUNNER_TEMP:ro" \
+            --workdir /workspace \
+            lumalock-fedora-builder:"$RELEASE_VERSION" \
+            scripts/build-fedora-package.sh \
+            "$RELEASE_VERSION" \
+            "$source_archive" \
+            "$vendor_archive" \
+            /workspace/dist/fedora
+
+      - name: Test locally built Fedora package
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --env RELEASE_VERSION \
+            --volume "$PWD/dist/fedora:/rpms:ro" \
+            "$FEDORA_IMAGE" \
+            bash -lc '
+              set -euo pipefail
+              rpm_path="/rpms/lumalock-$RELEASE_VERSION-1.fc44.x86_64.rpm"
+              dnf install --assumeyes "$rpm_path"
+              rpm -q lumalock
+              rpm -qf /usr/bin/luma /etc/pam.d/luma
+              rpm -q --qf \
+                "[%{FILENAMES} %{FILEFLAGS:fflags}\n]" \
+                lumalock \
+                | grep -E "/etc/pam.d/luma|/usr/bin/luma"
+              /usr/bin/luma --version
+              if grep -aEq -- \
+                "--demo|--lock-smoke|LUMA_ALLOW_NESTED_TEST" \
+                /usr/bin/luma; then
+                echo "Fedora release contains debug-only markers." >&2
+                exit 1
+              fi
+              dnf remove --assumeyes lumalock
+              if command -v luma >/dev/null; then
+                echo "Fedora package removal left the binary installed." >&2
+                exit 1
+              fi
+            '
+
+      - name: Submit source package to COPR
+        run: |
+          set -euo pipefail
+          if [[ -z "$COPR_CONFIG" ]]; then
+            echo "COPR_CONFIG is not configured." >&2
+            exit 1
+          fi
+
+          install -d -m 0700 "$RUNNER_TEMP/copr"
+          printf '%s\n' "$COPR_CONFIG" >"$RUNNER_TEMP/copr/config"
+          chmod 0600 "$RUNNER_TEMP/copr/config"
+
+          docker run --rm \
+            --volume "$RUNNER_TEMP/copr/config:/root/.config/copr:ro" \
+            --volume "$PWD/dist/fedora:/srpm:ro" \
+            "$FEDORA_IMAGE" \
+            bash -lc "
+              set -euo pipefail
+              dnf install --assumeyes \
+                --setopt=install_weak_deps=False \
+                copr-cli
+              copr-cli build \
+                lumalock \
+                /srpm/lumalock-$RELEASE_VERSION-1.fc44.src.rpm
+            "
+
+      - name: Test package from public COPR repository
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --env RELEASE_VERSION \
+            "$FEDORA_IMAGE" \
+            bash -lc '
+              set -euo pipefail
+              dnf install --assumeyes \
+                --setopt=install_weak_deps=False \
+                dnf-plugins-core
+              dnf copr enable --assumeyes ryannnkl/lumalock
+
+              installed=false
+              for attempt in {1..6}; do
+                if dnf install --assumeyes --refresh lumalock; then
+                  installed=true
+                  break
+                fi
+                echo "COPR metadata is not ready (attempt $attempt/6)."
+                dnf clean all
+                sleep 10
+              done
+              if [[ "$installed" != true ]]; then
+                echo "COPR package did not become available." >&2
+                exit 1
+              fi
+
+              installed=$(rpm -q --qf "%{VERSION}" lumalock)
+              if [[ "$installed" != "$RELEASE_VERSION" ]]; then
+                echo "COPR installed lumalock $installed." >&2
+                exit 1
+              fi
+              /usr/bin/luma --version
+              rpm -qf /usr/bin/luma /etc/pam.d/luma
+              dnf remove --assumeyes lumalock
+            '
+
+      - name: Write release summary
+        run: |
+          {
+            echo "## Luma v$RELEASE_VERSION"
+            echo
+            echo "- GitHub: https://github.com/$GITHUB_REPOSITORY/releases/tag/v$RELEASE_VERSION"
+            echo "- AUR: https://aur.archlinux.org/packages/lumalock"
+            echo "- COPR: https://copr.fedorainfracloud.org/coprs/ryannnkl/lumalock/builds/"
+          } >>"$GITHUB_STEP_SUMMARY"
