@@ -20,7 +20,10 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 2
 fi
 
-if [[ -z "$summary" || "$summary" == *$'\n'* || ${#summary} -gt 100 ]]; then
+if [[ -z "$summary" ||
+    "$summary" == *$'\n'* ||
+    "$summary" == *$'\r'* ||
+    ${#summary} -gt 100 ]]; then
     echo "Summary must be one non-empty line of at most 100 characters." >&2
     exit 2
 fi
@@ -110,11 +113,11 @@ update_spec() {
     local release_date
     release_date=$(LC_ALL=C date '+%a %b %d %Y')
 
-    awk \
+    RELEASE_SUMMARY=$summary awk \
         -v version="$version" \
-        -v date="$release_date" \
-        -v summary="$summary" '
+        -v date="$release_date" '
         BEGIN {
+            summary = ENVIRON["RELEASE_SUMMARY"]
             version_updated = 0
             release_updated = 0
             changelog_updated = 0
