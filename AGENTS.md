@@ -126,6 +126,20 @@ output after acquiring the lock.
   `luma`.
 - Keep the Arch recipe in `packaging/aur` and the Fedora recipe in
   `packaging/fedora` synchronized with tagged releases.
+- Start releases with `scripts/start-release.sh`; it prepares one version commit
+  on a clean, synchronized `main` branch and dispatches
+  `.github/workflows/release.yml`.
+- Keep validation credential-free. Distribution credentials belong only to the
+  protected GitHub `release` environment, whose approval gates the publishing
+  job.
+- Use a dedicated AUR deployment key and the protected COPR configuration.
+  Never persist GitHub credentials in a checkout mounted into a package
+  container or expose release secrets to package build scripts.
+- Pin release actions to commits and packaging images to digests. Treat pin
+  updates as explicit supply-chain maintenance.
+- Release reruns may replace assets and skip already synchronized package state
+  only when the existing version tag points to the original release commit.
+  Never move or repurpose a published tag.
 - Fedora builds use locked vendored dependencies. Generate the release asset with
   `scripts/create-vendor-archive.sh`, never commit the resulting archive, and
   keep network access disabled in the COPR build.

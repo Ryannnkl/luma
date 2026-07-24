@@ -23,6 +23,7 @@ feedback over an always-opaque lock surface.
 - [niri integration](#niri-integration)
 - [Testing and recovery](#testing-and-recovery)
 - [Development](#development)
+- [Maintainer releases](#maintainer-releases)
 - [Security model](#security-model)
 - [Project documentation](#project-documentation)
 - [License](#license)
@@ -320,9 +321,20 @@ cargo run -- --demo
 Do not enter a real password in demo mode. It does not acquire a session lock or
 authenticate through PAM, and release builds do not contain it.
 
-Version tags matching `vMAJOR.MINOR.PATCH` trigger the release workflow. GitHub
-Actions builds the x86_64 binary and publishes it with the PAM policy and
-`SHA256SUMS`.
+## Maintainer releases
+
+Once the protected `release` environment is configured, a maintainer can prepare
+and start the complete GitHub, AUR, and COPR release with:
+
+```sh
+./scripts/start-release.sh 0.4.0 "Add configurable animations"
+```
+
+The script updates the version metadata, creates one release-preparation commit,
+pushes it, and starts the protected workflow. Publishing pauses once for approval
+after all credential-free validation has passed. See
+[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for credential setup, package
+validation, and recovery from a partially completed release.
 
 ## Security model
 
