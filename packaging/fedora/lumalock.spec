@@ -1,5 +1,5 @@
 Name:           lumalock
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Secure and customizable Wayland session locker
 
@@ -45,5 +45,8 @@ install -Dpm0644 pam/luma %{buildroot}%{_sysconfdir}/pam.d/luma
 %config(noreplace) %{_sysconfdir}/pam.d/luma
 
 %changelog
+* Fri Jul 24 2026 Ryannnkl <ryannnkl@gmail.com> - 0.3.0-1
+- Add configurable input rounding and borders
+
 * Sun Jul 19 2026 Ryannnkl <ryannnkl@gmail.com> - 0.2.0-1
 - Initial package
