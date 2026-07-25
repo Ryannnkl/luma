@@ -202,6 +202,12 @@ prompt. A radius of 0 must remain sharp, a positive radius must visibly blur the
 frame, and the prompt must remain opaque. Invalid radii and capture failures must
 abort before nested niri becomes locked.
 
+With a positive radius, also confirm that the opaque fallback and usable prompt
+appear without waiting for the blur. The blurred background may replace the
+fallback after the first frame; input and clock rendering must remain responsive
+during that transition. A blur worker failure must retain the fallback rather
+than terminating the locker.
+
 For custom typography, test separate absolute TTF/OTF paths for
 `clock.hour_font_path`, `clock.minute_font_path`, and `date.font_path`. Confirm
 that each role uses its selected font. A missing, non-regular, oversized, or

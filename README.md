@@ -43,7 +43,7 @@ feedback over an always-opaque lock surface.
 - Real Wayland session locking through `ext-session-lock-v1`.
 - PAM authentication with zeroizing password memory.
 - One opaque lock surface for every active output.
-- Optional cursor-free screenshot capture and bounded software blur.
+- Optional cursor-free screenshot capture and asynchronous bounded software blur.
 - Configurable clock, date, colors, geometry, formats, and TTF/OTF fonts.
 - Independent fonts and colors for hours, minutes, and the date.
 - Visual loading, failure, and cooldown feedback without localized text.
@@ -226,6 +226,9 @@ Important details:
 - `capture_enabled` is disabled by default. When enabled, capture failure aborts
   before locking rather than silently showing unexpected content.
 - `blur_radius` accepts values from `0` through `64`; `0` keeps the capture sharp.
+- Positive blur runs outside the Wayland event loop. Luma can display its opaque
+  fallback and usable prompt immediately, then replace the background when the
+  blurred capture is ready.
 - `hour_color`, `minute_color`, and `date.color` are independent.
 - Font paths are optional, absolute TTF/OTF paths. Each configured font must be a
   regular valid file no larger than 16 MiB.

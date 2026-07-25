@@ -46,6 +46,7 @@ until the release gate is satisfied.
 - [x] Render clock, optional date, and bounded prompt feedback in software.
 - [x] Capture every current output before acquiring the lock when configured.
 - [x] Add bounded software blur and dimming without persisting screenshots.
+- [x] Move software blur off the lock-request path while keeping an opaque fallback.
 - Add GPU blur, full typography, and subtle animation.
 - [x] Preserve the opaque software fallback for new or unmatched outputs.
 - [x] Support multiple captured monitors without exposing uncaptured contents.

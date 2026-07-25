@@ -27,28 +27,36 @@ The command paths are intentionally separate:
 The current `--lock` path in `src/wayland/smoke.rs` (the shared lock client
 implementation) follows this sequence:
 
-1. Verify the Luma PAM service is a readable regular file.
-2. Connect to Wayland, bind the compositor, shared memory, outputs, seats, and
+1. Verify the Luma PAM service is a readable regular file and load the validated
+   configuration and configured fonts.
+2. When capture is enabled, capture and normalize every current output before
+   locking. Reject the run if any requested capture fails.
+3. Connect to Wayland, bind the compositor, shared memory, outputs, seats, and
    session-lock manager, and reject an environment with no outputs.
-3. Request `ext-session-lock-v1` and wait for `locked`.
-4. Create one lock surface per active output. Each surface is configured by the
-   compositor and receives an opaque ARGB8888 shared-memory frame.
-5. Add surfaces for outputs appearing during the lock and remove surfaces for
+4. Start the one-shot blur worker when the configured radius is positive, then
+   request `ext-session-lock-v1` immediately without waiting for blur completion.
+5. Wait for `locked` and create one lock surface per active output. Each surface
+   first receives an opaque ARGB8888 fallback frame with a usable prompt.
+6. Receive the blur result through a `calloop` channel and redraw matching
+   outputs with their captured backgrounds. A failed worker leaves the opaque
+   fallback active.
+7. Add surfaces for outputs appearing during the lock and remove surfaces for
    destroyed outputs.
-6. When readiness notification was requested internally, flush Wayland and
+8. When readiness notification was requested internally, flush Wayland and
    notify the waiting parent only after the compositor has confirmed the lock
-   and every current output has an attached opaque frame.
-7. Receive keyboard text into `InputState`. Backspace removes one Unicode scalar
+   and every current output has an attached opaque frame. Readiness does not wait
+   for presentation-only blur.
+9. Receive keyboard text into `InputState`. Backspace removes one Unicode scalar
    value; Enter starts an attempt and transfers its token and zeroizing
    `PasswordAttempt` to the PAM worker.
-8. Continue dispatching Wayland while PAM runs. The worker sends only the token
+10. Continue dispatching Wayland while PAM runs. The worker sends only the token
    and a generic result through a `calloop` channel that wakes the event loop.
-9. Apply the result to `AuthenticationState`. Denial and infrastructure failure
+11. Apply the result to `AuthenticationState`. Denial and infrastructure failure
    render the same generic warning, keep the lock active, and enforce the
    progressive bounded cooldown.
-10. Call `unlock_and_destroy` only when the active attempt returns
+12. Call `unlock_and_destroy` only when the active attempt returns
    `UnlockAuthorized`.
-11. Flush the unlock request and exit the client event loop immediately.
+13. Flush the unlock request and exit the client event loop immediately.
 
 `finished` rejects or cancels a lock; it is not sent to acknowledge a
 client-initiated `unlock_and_destroy`. Receiving it without a successful PAM
@@ -94,10 +102,12 @@ authorization.
 - `src/wayland/capture.rs` obtains one cursor-free wlr-screencopy frame per
   current output before requesting the lock. It accepts only ARGB8888/XRGB8888
   shared-memory buffers, bounds per-image and aggregate allocations, and maps
-  captures to lock surfaces by stable output name.
+  captures to lock surfaces by stable output name. Its one-shot blur worker owns
+  captured pixels while processing, contains panics as presentation failures,
+  and wakes the lock event loop through its registered channel.
 - `src/renderer/background.rs` normalizes captures to packed opaque ARGB8888 and
-  applies a bounded linear-time software blur. Pixels remain in process memory
-  and are dropped when the locker exits.
+  applies a bounded linear-time software blur outside the Wayland event loop.
+  Pixels remain in process memory and are dropped when the locker exits.
 
 ## Authentication state contract
 
@@ -147,6 +157,7 @@ The authenticated path, asynchronous PAM feedback, optional captured background,
 and readiness-aware daemon parent have been exercised in a nested niri under the
 external watchdog. Repeated manual primary-session locks also completed without
 leaving a Luma process behind. The release binary builds without the smoke or
-demo commands. The current suite passes `85` tests with cargo fmt, Clippy, and
-Cargo tests. Renderer-failure, repeated output-change, and suspend/resume gates
-remain open.
+demo commands. The current suite passes `90` tests with cargo fmt, Clippy, and
+Cargo tests. The asynchronous blur worker and its opaque failure fallback have
+focused unit coverage. Repeated output-change and suspend/resume gates remain
+open.

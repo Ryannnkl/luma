@@ -115,10 +115,14 @@ escape-to-close behavior must never enter the release configuration schema.
 
 Optional background capture uses one `zwlr_screencopy_manager_v1` frame per
 output before the session-lock request. Captures are matched to lock surfaces by
-stable output name, normalized to opaque ARGB8888, blurred within bounded memory,
-and discarded when the lock process exits. Capture failures while enabled are
-pre-lock errors; never silently downgrade a requested capture on an existing
-output after acquiring the lock.
+stable output name and normalized to opaque ARGB8888 before locking. Positive
+blur runs in a one-shot worker whose completion wakes the Wayland event loop;
+never delay the session-lock request while waiting for that worker. Render the
+opaque fallback and real prompt until the blurred frames are ready. A worker
+failure must keep that fallback active and must never terminate or unlock the
+session. Captures remain within bounded memory and are discarded when the lock
+process exits. Capture failures while enabled are pre-lock errors; never silently
+downgrade a requested capture on an existing output after acquiring the lock.
 
 ## Distribution
 
