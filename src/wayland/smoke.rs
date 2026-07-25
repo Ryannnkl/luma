@@ -47,7 +47,7 @@ use crate::{
     },
 };
 
-use super::capture::{CapturedOutput, capture_outputs};
+use super::capture::{CapturedOutput, blur_outputs, capture_outputs};
 
 /// Runs the authenticated Luma session locker without a timed bypass.
 ///
@@ -62,12 +62,12 @@ pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockE
         config.date.font_path.as_deref(),
     )
     .map_err(|error| LockError::Font(error.to_string()))?;
-    let captured_outputs = if config.background.capture_enabled {
-        capture_outputs(config.background.blur_radius)
-            .map_err(|error| LockError::Capture(error.to_string()))?
+    let mut captured_outputs = if config.background.capture_enabled {
+        capture_outputs().map_err(|error| LockError::Capture(error.to_string()))?
     } else {
         Vec::new()
     };
+    blur_outputs(&mut captured_outputs, config.background.blur_radius);
     let presentation = LockPresentation {
         renderers,
         clock: config.clock,

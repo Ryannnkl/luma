@@ -27,7 +27,7 @@ pub(crate) struct CapturedOutput {
     pub image: BackgroundImage,
 }
 
-pub(crate) fn capture_outputs(blur_radius: u32) -> Result<Vec<CapturedOutput>, CaptureError> {
+pub(crate) fn capture_outputs() -> Result<Vec<CapturedOutput>, CaptureError> {
     let connection = Connection::connect_to_env().map_err(CaptureError::Connect)?;
     let (globals, mut event_queue) =
         registry_queue_init::<CaptureState>(&connection).map_err(CaptureError::Registry)?;
@@ -44,7 +44,6 @@ pub(crate) fn capture_outputs(blur_radius: u32) -> Result<Vec<CapturedOutput>, C
         pending: Vec::new(),
         completed: Vec::new(),
         failure: None,
-        blur_radius,
         allocated_bytes: 0,
     };
     event_queue
@@ -96,7 +95,6 @@ struct CaptureState {
     pending: Vec<PendingCapture>,
     completed: Vec<CapturedOutput>,
     failure: Option<CaptureError>,
-    blur_radius: u32,
     allocated_bytes: u64,
 }
 
@@ -211,8 +209,7 @@ impl CaptureState {
             pool.mmap(),
             pending.y_inverted,
         ) {
-            Ok(mut image) => {
-                image.blur(self.blur_radius);
+            Ok(image) => {
                 self.completed.push(CapturedOutput {
                     name: pending.name.clone(),
                     image,
@@ -223,6 +220,12 @@ impl CaptureState {
             }
             Err(error) => self.failure = Some(CaptureError::Image(error)),
         }
+    }
+}
+
+pub(crate) fn blur_outputs(outputs: &mut [CapturedOutput], radius: u32) {
+    for output in outputs {
+        output.image.blur(radius);
     }
 }
 
