@@ -1,5 +1,10 @@
-use std::fmt;
+use std::{
+    fmt, io,
+    panic::{AssertUnwindSafe, catch_unwind},
+    thread,
+};
 
+use calloop::channel;
 use smithay_client_toolkit::{
     delegate_output, delegate_registry, delegate_shm,
     output::{OutputHandler, OutputState},
@@ -229,6 +234,35 @@ pub(crate) fn blur_outputs(outputs: &mut [CapturedOutput], radius: u32) {
     }
 }
 
+pub(crate) enum BlurCompletion {
+    Ready(Vec<CapturedOutput>),
+    Failed,
+}
+
+pub(crate) fn spawn_blur_worker(
+    outputs: Vec<CapturedOutput>,
+    radius: u32,
+    completions: channel::Sender<BlurCompletion>,
+) -> Result<(), io::Error> {
+    thread::Builder::new()
+        .name("luma-background".to_owned())
+        .spawn(move || run_blur_worker(outputs, radius, &completions))?;
+    Ok(())
+}
+
+fn run_blur_worker(
+    mut outputs: Vec<CapturedOutput>,
+    radius: u32,
+    completions: &channel::Sender<BlurCompletion>,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| blur_outputs(&mut outputs, radius)));
+    let completion = match result {
+        Ok(()) => BlurCompletion::Ready(outputs),
+        Err(_) => BlurCompletion::Failed,
+    };
+    let _ = completions.send(completion);
+}
+
 impl ProvidesRegistryState for CaptureState {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
@@ -367,3 +401,55 @@ delegate_output!(CaptureState);
 delegate_shm!(CaptureState);
 delegate_noop!(CaptureState: ignore ZwlrScreencopyManagerV1);
 delegate_noop!(CaptureState: ignore wl_buffer::WlBuffer);
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use calloop::{EventLoop, channel};
+
+    use super::{BlurCompletion, CapturedOutput, spawn_blur_worker};
+    use crate::renderer::BackgroundImage;
+
+    #[test]
+    fn blur_completion_wakes_the_event_loop() {
+        let source = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let image = BackgroundImage::from_argb8888(3, 3, 12, &source, false)
+            .expect("test background should be valid");
+        let original = image.clone();
+        let outputs = vec![CapturedOutput {
+            name: "test-output".to_owned(),
+            image,
+        }];
+        let (sender, receiver) = channel::channel();
+        let mut event_loop: EventLoop<Vec<BlurCompletion>> =
+            EventLoop::try_new().expect("event loop should start");
+        event_loop
+            .handle()
+            .insert_source(receiver, |event, (), completions| {
+                if let channel::Event::Msg(completion) = event {
+                    completions.push(completion);
+                }
+            })
+            .expect("background channel should register");
+
+        spawn_blur_worker(outputs, 3, sender).expect("background worker should start");
+        let mut completions = Vec::new();
+        event_loop
+            .dispatch(Duration::from_secs(1), &mut completions)
+            .expect("background completion should wake the event loop");
+
+        let BlurCompletion::Ready(outputs) = completions
+            .pop()
+            .expect("worker should return one completion")
+        else {
+            panic!("background worker unexpectedly failed");
+        };
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].name, "test-output");
+        assert_ne!(outputs[0].image, original);
+    }
+}

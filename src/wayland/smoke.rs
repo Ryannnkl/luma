@@ -47,7 +47,7 @@ use crate::{
     },
 };
 
-use super::capture::{CapturedOutput, blur_outputs, capture_outputs};
+use super::capture::{BlurCompletion, CapturedOutput, capture_outputs, spawn_blur_worker};
 
 /// Runs the authenticated Luma session locker without a timed bypass.
 ///
@@ -62,12 +62,17 @@ pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockE
         config.date.font_path.as_deref(),
     )
     .map_err(|error| LockError::Font(error.to_string()))?;
-    let mut captured_outputs = if config.background.capture_enabled {
+    let captured_outputs = if config.background.capture_enabled {
         capture_outputs().map_err(|error| LockError::Capture(error.to_string()))?
     } else {
         Vec::new()
     };
-    blur_outputs(&mut captured_outputs, config.background.blur_radius);
+    let blur_radius = config.background.blur_radius;
+    let (captured_outputs, pending_blur) = if blur_radius == 0 || captured_outputs.is_empty() {
+        (captured_outputs, None)
+    } else {
+        (Vec::new(), Some(captured_outputs))
+    };
     let presentation = LockPresentation {
         renderers,
         clock: config.clock,
@@ -107,6 +112,19 @@ pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockE
             }
         })
         .map_err(|_| LockError::EventSource("could not register the authentication channel"))?;
+    if let Some(outputs) = pending_blur {
+        let (blur_sender, blur_channel) = channel::channel();
+        event_loop
+            .handle()
+            .insert_source(blur_channel, |event, (), state| {
+                if let channel::Event::Msg(completion) = event {
+                    state.handle_blur_completion(completion);
+                }
+            })
+            .map_err(|_| LockError::EventSource("could not register the background channel"))?;
+        spawn_blur_worker(outputs, blur_radius, blur_sender)
+            .map_err(LockError::BackgroundWorker)?;
+    }
 
     let lock = state
         .lock_manager
@@ -185,6 +203,7 @@ pub enum LockError {
     Font(String),
     Capture(String),
     AuthenticationWorker(std::io::Error),
+    BackgroundWorker(std::io::Error),
     EventLoop(String),
     EventSource(&'static str),
     Unlock(String),
@@ -214,6 +233,9 @@ impl fmt::Display for LockError {
                     formatter,
                     "could not start the authentication worker: {source}"
                 )
+            }
+            Self::BackgroundWorker(source) => {
+                write!(formatter, "could not start the background worker: {source}")
             }
             Self::EventLoop(source) => write!(formatter, "lock event loop failed: {source}"),
             Self::EventSource(source) => formatter.write_str(source),
@@ -658,6 +680,21 @@ impl LockState {
         self.redraw_input_indicator();
     }
 
+    fn handle_blur_completion(&mut self, completion: BlurCompletion) {
+        if self.finished {
+            return;
+        }
+        let Some(outputs) = completed_background_outputs(completion) else {
+            eprintln!("luma: background blur failed; keeping the opaque fallback");
+            return;
+        };
+        let Some(presentation) = &mut self.presentation else {
+            return;
+        };
+        presentation.captured_outputs = outputs;
+        self.redraw_input_indicator();
+    }
+
     fn event_timeout(&self) -> Option<Duration> {
         let authentication = self
             .authentication
@@ -819,6 +856,13 @@ fn handle_backspace(input: &mut InputState, control: bool) {
     }
 }
 
+fn completed_background_outputs(completion: BlurCompletion) -> Option<Vec<CapturedOutput>> {
+    match completion {
+        BlurCompletion::Ready(outputs) => Some(outputs),
+        BlurCompletion::Failed => None,
+    }
+}
+
 const fn prompt_state_for_phase(phase: Option<AuthenticationPhase>) -> PromptState {
     match phase {
         None | Some(AuthenticationPhase::Idle) => PromptState::Ready,
@@ -893,7 +937,8 @@ delegate_noop!(LockState: ignore wl_surface::WlSurface);
 mod tests {
     use crate::{input::InputState, state::AuthenticationPhase, wayland::opaque::PromptState};
 
-    use super::{handle_backspace, prompt_state_for_phase};
+    use super::{completed_background_outputs, handle_backspace, prompt_state_for_phase};
+    use crate::wayland::capture::BlurCompletion;
 
     #[test]
     fn control_backspace_clears_the_password_input() {
@@ -937,5 +982,10 @@ mod tests {
     #[test]
     fn smoke_mode_keeps_the_neutral_prompt() {
         assert_eq!(prompt_state_for_phase(None), PromptState::Ready);
+    }
+
+    #[test]
+    fn failed_background_blur_keeps_the_opaque_fallback() {
+        assert!(completed_background_outputs(BlurCompletion::Failed).is_none());
     }
 }
