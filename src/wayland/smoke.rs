@@ -56,17 +56,14 @@ use super::capture::{BlurCompletion, CapturedOutput, capture_outputs, spawn_blur
 /// Returns an error when critical Wayland resources are unavailable, the compositor rejects the
 /// lock, or the authenticated unlock request cannot be delivered.
 pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockError> {
+    let activation_started = Instant::now();
     let renderers = LockTextRenderers::from_paths(
         config.clock.hour_font_path.as_deref(),
         config.clock.minute_font_path.as_deref(),
         config.date.font_path.as_deref(),
     )
     .map_err(|error| LockError::Font(error.to_string()))?;
-    let captured_outputs = if config.background.capture_enabled {
-        capture_outputs().map_err(|error| LockError::Capture(error.to_string()))?
-    } else {
-        Vec::new()
-    };
+    let captured_outputs = capture_backgrounds(config.background.capture_enabled)?;
     let blur_radius = config.background.blur_radius;
     let (captured_outputs, pending_blur) = if blur_radius == 0 || captured_outputs.is_empty() {
         (captured_outputs, None)
@@ -94,6 +91,7 @@ pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockE
         config.input,
         Some(presentation),
         notify_ready,
+        activation_started,
     )?;
     if state.output_state.outputs().next().is_none() {
         return Err(LockError::NoOutputs);
@@ -126,6 +124,10 @@ pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockE
             .map_err(LockError::BackgroundWorker)?;
     }
 
+    eprintln!(
+        "luma: requesting the session lock after {} ms",
+        activation_started.elapsed().as_millis()
+    );
     let lock = state
         .lock_manager
         .lock(&qh)
@@ -152,6 +154,20 @@ pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockE
     }
 }
 
+fn capture_backgrounds(enabled: bool) -> Result<Vec<CapturedOutput>, LockError> {
+    if !enabled {
+        return Ok(Vec::new());
+    }
+    let capture_started = Instant::now();
+    let outputs = capture_outputs().map_err(|error| LockError::Capture(error.to_string()))?;
+    eprintln!(
+        "luma: captured {} background(s) in {} ms",
+        outputs.len(),
+        capture_started.elapsed().as_millis()
+    );
+    Ok(outputs)
+}
+
 /// Runs a deliberately bounded opaque lock smoke test.
 ///
 /// This is a development test path, not authentication and not the production
@@ -167,7 +183,15 @@ pub fn run(timeout: Duration) -> Result<(), LockError> {
     let (globals, event_queue) =
         registry_queue_init::<LockState>(&connection).map_err(LockError::Registry)?;
     let qh = event_queue.handle();
-    let mut state = LockState::new(&globals, &qh, None, InputConfig::default(), None, false)?;
+    let mut state = LockState::new(
+        &globals,
+        &qh,
+        None,
+        InputConfig::default(),
+        None,
+        false,
+        Instant::now(),
+    )?;
     let lock = state
         .lock_manager
         .lock(&qh)
@@ -278,6 +302,8 @@ struct LockState {
     unlock_authorized: bool,
     finished: bool,
     readiness: LockReadiness,
+    activation_started: Instant,
+    coverage_reported: bool,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -316,6 +342,7 @@ impl LockState {
         input_config: InputConfig,
         presentation: Option<LockPresentation>,
         notify_ready: bool,
+        activation_started: Instant,
     ) -> Result<Self, LockError> {
         let compositor = globals
             .bind(qh, 1..=6, ())
@@ -362,6 +389,8 @@ impl LockState {
             } else {
                 LockReadiness::Disabled
             },
+            activation_started,
+            coverage_reported: false,
         })
     }
 
@@ -375,11 +404,11 @@ impl LockState {
             return;
         }
 
-        let output_count = self.output_state.outputs().count();
-        if output_count == 0
-            || self.surfaces.len() != output_count
-            || self.surfaces.iter().any(|surface| surface.buffer.is_none())
-        {
+        if !coverage_is_complete(
+            self.output_state.outputs().count(),
+            self.surfaces.len(),
+            self.surfaces.iter().all(|surface| surface.buffer.is_some()),
+        ) {
             return;
         }
         if connection.flush().is_err() {
@@ -692,6 +721,10 @@ impl LockState {
             return;
         };
         presentation.captured_outputs = outputs;
+        eprintln!(
+            "luma: blurred background ready after {} ms",
+            self.activation_started.elapsed().as_millis()
+        );
         self.redraw_input_indicator();
     }
 
@@ -844,8 +877,29 @@ impl LockState {
         surface.wl_surface().damage(0, 0, width, height);
         surface.wl_surface().commit();
         self.surfaces[index].buffer = Some(buffer);
+        if !self.coverage_reported
+            && coverage_is_complete(
+                self.output_state.outputs().count(),
+                self.surfaces.len(),
+                self.surfaces.iter().all(|surface| surface.buffer.is_some()),
+            )
+        {
+            self.coverage_reported = true;
+            eprintln!(
+                "luma: covered every output after {} ms",
+                self.activation_started.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
+}
+
+const fn coverage_is_complete(
+    output_count: usize,
+    surface_count: usize,
+    every_surface_has_buffer: bool,
+) -> bool {
+    output_count > 0 && surface_count == output_count && every_surface_has_buffer
 }
 
 fn handle_backspace(input: &mut InputState, control: bool) {
@@ -901,7 +955,7 @@ impl SessionLockHandler for LockState {
 
     fn configure(
         &mut self,
-        _connection: &Connection,
+        connection: &Connection,
         _qh: &QueueHandle<Self>,
         surface: SessionLockSurface,
         configure: SessionLockSurfaceConfigure,
@@ -921,6 +975,7 @@ impl SessionLockHandler for LockState {
         self.surfaces[index].width = width;
         self.surfaces[index].height = height;
         let _ = self.render_surface(index);
+        self.notify_ready_if_covered(connection);
     }
 }
 
@@ -937,7 +992,10 @@ delegate_noop!(LockState: ignore wl_surface::WlSurface);
 mod tests {
     use crate::{input::InputState, state::AuthenticationPhase, wayland::opaque::PromptState};
 
-    use super::{completed_background_outputs, handle_backspace, prompt_state_for_phase};
+    use super::{
+        completed_background_outputs, coverage_is_complete, handle_backspace,
+        prompt_state_for_phase,
+    };
     use crate::wayland::capture::BlurCompletion;
 
     #[test]
@@ -987,5 +1045,13 @@ mod tests {
     #[test]
     fn failed_background_blur_keeps_the_opaque_fallback() {
         assert!(completed_background_outputs(BlurCompletion::Failed).is_none());
+    }
+
+    #[test]
+    fn readiness_requires_one_buffered_surface_per_output() {
+        assert!(!coverage_is_complete(0, 0, true));
+        assert!(!coverage_is_complete(2, 1, true));
+        assert!(!coverage_is_complete(1, 1, false));
+        assert!(coverage_is_complete(2, 2, true));
     }
 }
