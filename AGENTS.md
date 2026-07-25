@@ -103,6 +103,9 @@ through authenticating, failure, and cooldown transitions.
 release binary, requires `LUMA_ALLOW_NESTED_TEST=1`, starts a new nested niri, and
 arms an external 60-second systemd watchdog before launching Luma. Its `--stop`
 mode must continue to terminate only the named nested test units.
+The runner must use `scripts/niri-nested-test.kdl` instead of the user's desktop
+configuration. Its optional wallpaper mode may use an external button and timing
+diagnostics, but these controls must remain outside the Luma release binary.
 
 The real opaque fallback consumes the validated `[input]` configuration for
 position, dimensions, shape, border, limits, dot geometry, colors, feedback

@@ -1,0 +1,6 @@
+// Minimal isolated configuration for Luma's nested lock test.
+// Do not inherit desktop autostart programs, idle daemons, or layer rules.
+
+hotkey-overlay {
+    skip-at-startup
+}

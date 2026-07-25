@@ -151,6 +151,29 @@ Start the guarded test from the project root:
 LUMA_ALLOW_NESTED_TEST=1 ./scripts/test-nested-lock.sh
 ```
 
+To exercise background capture, provide an absolute path to a wallpaper:
+
+```sh
+LUMA_ALLOW_NESTED_TEST=1 \
+LUMA_NESTED_WALLPAPER=/absolute/path/to/wallpaper.jpg \
+./scripts/test-nested-lock.sh
+```
+
+This optional mode starts `swaybg` inside the nested compositor and then presents
+a `zenity` button over the wallpaper. Clicking **Lock now** closes the dialog and
+starts Luma. The runner prints the measured interval from launch until every
+nested output has an opaque lock frame. Luma also records separate capture,
+session-lock request, opaque coverage, and blur-ready timings in the service
+journal. The short wallpaper and dialog preparation delays belong to the test
+harness and are excluded from those measurements. This mode requires `swaybg`,
+`zenity`, and a configuration with `background.capture_enabled = true`.
+
+Read the measured activation time with:
+
+```sh
+journalctl --user-unit=luma-auth-lock.service --no-pager -n 30
+```
+
 The runner loads `~/.config/luma/config.toml` when present. Copy and edit
 `config.example.toml` there before starting if the test should exercise custom
 prompt geometry or colors. Invalid configuration is rejected before niri is
@@ -158,9 +181,14 @@ locked.
 
 The runner validates its dependencies and PAM policy, builds the release binary,
 arms an external systemd watchdog, and then launches that binary inside a new
-nested niri. After 60 seconds the watchdog stops `luma-auth-lock.service`, closing
-the entire nested compositor even if Luma's own event loop is stuck. It does not
-unlock Luma and cannot recover a lock started in the primary compositor.
+nested niri. The compositor loads the minimal
+`scripts/niri-nested-test.kdl` configuration instead of the user's desktop
+configuration, so desktop autostart programs, idle daemons, keybindings, and
+layer rules cannot interfere with the isolated test. After 60 seconds the
+watchdog stops `luma-auth-lock.service`, closing the entire nested compositor
+even if Luma's own event loop is stuck. Its one-second timer accuracy keeps that
+recovery close to the advertised deadline. It does not unlock Luma and cannot
+recover a lock started in the primary compositor.
 
 Type the normal user password inside the nested lock and press Enter. An
 incorrect password must leave it locked; a correct password must unlock only the
