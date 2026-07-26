@@ -365,9 +365,10 @@ jobs:
         run: |
           set -euo pipefail
           source_archive="$RUNNER_TEMP/luma-$RELEASE_VERSION.tar.gz"
-          vendor_archive="$PWD/dist/luma-$RELEASE_VERSION-vendor.tar.xz"
+          host_vendor_archive="$PWD/dist/luma-$RELEASE_VERSION-vendor.tar.xz"
+          container_vendor_archive="/workspace/dist/luma-$RELEASE_VERSION-vendor.tar.xz"
 
-          if [[ ! -f "$source_archive" || ! -f "$vendor_archive" ]]; then
+          if [[ ! -f "$source_archive" || ! -f "$host_vendor_archive" ]]; then
             echo "Fedora release sources are missing." >&2
             exit 1
           fi
@@ -382,6 +383,7 @@ jobs:
             --network none \
             --user "$(id -u):$(id -g)" \
             --env HOME=/tmp \
+            --volume /etc/passwd:/etc/passwd:ro \
             --volume "$PWD:/workspace" \
             --volume "$RUNNER_TEMP:$RUNNER_TEMP:ro" \
             --workdir /workspace \
@@ -389,7 +391,7 @@ jobs:
             scripts/build-fedora-package.sh \
             "$RELEASE_VERSION" \
             "$source_archive" \
-            "$vendor_archive" \
+            "$container_vendor_archive" \
             /workspace/dist/fedora
 
       - name: Test locally built Fedora package
