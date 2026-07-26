@@ -107,6 +107,21 @@ replaced, and already synchronized AUR state becomes a no-op. The workflow
 refuses to reuse a version whose tag points elsewhere; never move or silently
 replace a published release tag.
 
+If GitHub Release and AUR publishing succeeded but Fedora or COPR failed, repair
+only the remaining distributions from the immutable tag:
+
+```sh
+gh workflow run release.yml \
+  --ref main \
+  --field version=0.4.0 \
+  --field repair_fedora_only=true
+```
+
+Repair mode checks out `vVERSION`, regenerates and validates its release assets,
+skips GitHub Release and AUR mutations, and continues with the offline Fedora
+build, local RPM test, COPR submission, and public repository test. It still
+requires approval through the protected `release` environment.
+
 ## Manual release fallback
 
 Use this only when repairing the automation or when GitHub Actions is
