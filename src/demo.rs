@@ -231,7 +231,7 @@ fn paint_password_indicator(
     input_length: usize,
     showing_feedback: bool,
 ) {
-    if !config.enabled {
+    if !config.enabled || (config.hide_when_empty && input_length == 0 && !showing_feedback) {
         return;
     }
 

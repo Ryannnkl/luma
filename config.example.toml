@@ -36,8 +36,9 @@ size = 22.0
 color = "#f6f8f7dc"
 
 [input]
-# The real lock always keeps its authentication prompt visible for safety.
+# The real lock keeps accepting input even when the visual indicator is hidden.
 enabled = true
+hide_when_empty = true
 x = 0.50
 y = 0.925
 width = 156.0

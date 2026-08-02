@@ -282,6 +282,7 @@ impl Default for DateConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct InputConfig {
     pub enabled: bool,
+    pub hide_when_empty: bool,
     pub x: f32,
     pub y: f32,
     pub width: f32,
@@ -307,6 +308,7 @@ impl Default for InputConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            hide_when_empty: false,
             x: 0.5,
             y: 0.925,
             width: 156.0,
@@ -364,6 +366,19 @@ mod tests {
         .expect("single-line clock layout should parse");
 
         assert_eq!(config.clock.layout, super::ClockLayout::SingleLine);
+    }
+
+    #[test]
+    fn accepts_hiding_the_empty_input() {
+        let config: Config = toml::from_str(
+            r"
+                [input]
+                hide_when_empty = true
+            ",
+        )
+        .expect("empty-input visibility should parse");
+
+        assert!(config.input.hide_when_empty);
     }
 
     #[test]

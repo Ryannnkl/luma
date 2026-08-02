@@ -81,6 +81,13 @@ pub(crate) fn draw_lock_prompt(
     if width < 80 || height < 80 {
         return;
     }
+    if config.enabled
+        && config.hide_when_empty
+        && password_length == 0
+        && prompt_state == PromptState::Ready
+    {
+        return;
+    }
 
     let prompt = prompt_rectangle(width, height, config);
     let ready_background = opaque_over(Rgba::from_config(config.background_color), BACKGROUND);
@@ -957,6 +964,52 @@ mod tests {
                 Rgba::from_config(config.filled_dot_color),
                 opaque_over(Rgba::from_config(config.background_color), BACKGROUND),
             ))
+        );
+    }
+
+    #[test]
+    fn can_hide_empty_input_until_the_first_character() {
+        let width = 200;
+        let height = 120;
+        let mut empty_canvas = vec![0; width * height * 4];
+        let mut typed_canvas = vec![0; width * height * 4];
+        let config = InputConfig {
+            hide_when_empty: true,
+            ..InputConfig::default()
+        };
+
+        draw_lock_frame(&mut empty_canvas, 200, 120, 0, PromptState::Ready, &config);
+        draw_lock_frame(&mut typed_canvas, 200, 120, 1, PromptState::Ready, &config);
+
+        assert!(
+            empty_canvas
+                .chunks_exact(4)
+                .all(|pixel| pixel == encoded(BACKGROUND))
+        );
+        assert!(
+            typed_canvas
+                .chunks_exact(4)
+                .any(|pixel| pixel != encoded(BACKGROUND))
+        );
+    }
+
+    #[test]
+    fn keeps_the_prompt_visible_when_input_is_disabled() {
+        let width = 200;
+        let height = 120;
+        let mut canvas = vec![0; width * height * 4];
+        let config = InputConfig {
+            enabled: false,
+            hide_when_empty: true,
+            ..InputConfig::default()
+        };
+
+        draw_lock_frame(&mut canvas, 200, 120, 0, PromptState::Ready, &config);
+
+        assert!(
+            canvas
+                .chunks_exact(4)
+                .any(|pixel| pixel != encoded(BACKGROUND))
         );
     }
 
