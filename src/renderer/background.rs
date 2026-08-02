@@ -1,7 +1,17 @@
-use std::fmt;
+use std::{
+    fmt,
+    fs::File,
+    io::{self, BufReader},
+    path::Path,
+};
+
+use image::{ImageReader, Limits};
 
 const BYTES_PER_PIXEL: usize = 4;
 const MAX_PIXELS: usize = 16_777_216;
+const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION: u32 = 8_192;
+const MAX_IMAGE_ALLOC: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BackgroundImage {
@@ -11,6 +21,69 @@ pub struct BackgroundImage {
 }
 
 impl BackgroundImage {
+    /// Loads and normalizes a static wallpaper using content-based format detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file is unreadable, not regular, too large, has an
+    /// unsupported format, or exceeds the decoded image limits.
+    pub fn from_path(path: &Path) -> Result<Self, WallpaperError> {
+        let file = File::open(path).map_err(WallpaperError::Read)?;
+        let metadata = file.metadata().map_err(WallpaperError::Read)?;
+        if !metadata.file_type().is_file() {
+            return Err(WallpaperError::NotRegular);
+        }
+        if metadata.len() > MAX_FILE_BYTES {
+            return Err(WallpaperError::TooLarge);
+        }
+
+        let mut reader = ImageReader::new(BufReader::new(file))
+            .with_guessed_format()
+            .map_err(WallpaperError::Read)?;
+        let mut limits = Limits::default();
+        limits.max_image_width = Some(MAX_IMAGE_DIMENSION);
+        limits.max_image_height = Some(MAX_IMAGE_DIMENSION);
+        limits.max_alloc = Some(MAX_IMAGE_ALLOC);
+        reader.limits(limits);
+        let image = reader
+            .decode()
+            .map_err(|error| WallpaperError::Decode(error.to_string()))?
+            .into_rgba8();
+        Self::from_rgba8(image.width(), image.height(), image.into_raw())
+            .map_err(WallpaperError::Image)
+    }
+
+    /// Creates an opaque image from tightly packed RGBA8 pixels.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when dimensions or the pixel buffer exceed the image limits.
+    pub fn from_rgba8(width: u32, height: u32, mut pixels: Vec<u8>) -> Result<Self, ImageError> {
+        let width = usize::try_from(width).map_err(|_| ImageError::Dimensions)?;
+        let height = usize::try_from(height).map_err(|_| ImageError::Dimensions)?;
+        let pixel_count = width.checked_mul(height).ok_or(ImageError::Dimensions)?;
+        let expected_size = pixel_count
+            .checked_mul(BYTES_PER_PIXEL)
+            .ok_or(ImageError::Dimensions)?;
+        if width == 0 || height == 0 || pixel_count > MAX_PIXELS || pixels.len() != expected_size {
+            return Err(ImageError::Dimensions);
+        }
+
+        for pixel in pixels.chunks_exact_mut(BYTES_PER_PIXEL) {
+            #[cfg(target_endian = "little")]
+            pixel.swap(0, 2);
+            #[cfg(target_endian = "big")]
+            pixel.rotate_right(1);
+            set_alpha(pixel, 255);
+        }
+
+        Ok(Self {
+            width,
+            height,
+            pixels,
+        })
+    }
+
     /// Normalizes a captured native-endian ARGB8888 buffer into a packed opaque image.
     ///
     /// # Errors
@@ -112,13 +185,38 @@ pub enum ImageError {
 impl fmt::Display for ImageError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Dimensions => formatter.write_str("captured image dimensions are unsupported"),
-            Self::BufferTooSmall => formatter.write_str("captured image buffer is incomplete"),
+            Self::Dimensions => formatter.write_str("image dimensions are unsupported"),
+            Self::BufferTooSmall => formatter.write_str("image buffer is incomplete"),
         }
     }
 }
 
 impl std::error::Error for ImageError {}
+
+#[derive(Debug)]
+pub enum WallpaperError {
+    Read(io::Error),
+    NotRegular,
+    TooLarge,
+    Decode(String),
+    Image(ImageError),
+}
+
+impl fmt::Display for WallpaperError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read(source) => write!(formatter, "could not read wallpaper: {source}"),
+            Self::NotRegular => formatter.write_str("wallpaper is not a regular file"),
+            Self::TooLarge => formatter.write_str("wallpaper file exceeds 64 MiB"),
+            Self::Decode(source) => write!(formatter, "could not decode wallpaper: {source}"),
+            Self::Image(source) => {
+                write!(formatter, "wallpaper dimensions are unsupported: {source}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for WallpaperError {}
 
 fn blur_horizontal(
     source: &[u8],
@@ -236,7 +334,42 @@ fn set_alpha(pixel: &mut [u8], alpha: u8) {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::PathBuf};
+
     use super::{BackgroundImage, ImageError};
+
+    #[test]
+    fn loads_a_wallpaper_by_content_signature() {
+        let path = temporary_wallpaper_path("png");
+        fs::write(
+            &path,
+            include_bytes!("../../docs/assets/luma-lock-screen.png"),
+        )
+        .expect("test wallpaper should be written");
+
+        let image = BackgroundImage::from_path(&path).expect("wallpaper should decode");
+
+        fs::remove_file(path).expect("test wallpaper should be removed");
+        assert!(image.width() > 0);
+        assert!(image.height() > 0);
+        assert!(
+            image
+                .pixels()
+                .chunks_exact(4)
+                .all(|pixel| alpha(pixel) == 255)
+        );
+    }
+
+    #[test]
+    fn converts_rgba_pixels_to_opaque_native_argb8888() {
+        let image = BackgroundImage::from_rgba8(1, 1, vec![1, 2, 3, 4])
+            .expect("one RGBA pixel should be valid");
+
+        #[cfg(target_endian = "little")]
+        assert_eq!(image.pixels(), &[3, 2, 1, 255]);
+        #[cfg(target_endian = "big")]
+        assert_eq!(image.pixels(), &[255, 1, 2, 3]);
+    }
 
     #[test]
     fn normalizes_stride_orientation_and_alpha() {
@@ -319,5 +452,9 @@ mod tests {
         return pixel[3];
         #[cfg(target_endian = "big")]
         return pixel[0];
+    }
+
+    fn temporary_wallpaper_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("luma-wallpaper-{}-{label}.png", std::process::id()))
     }
 }

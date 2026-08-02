@@ -4,6 +4,8 @@
 
 [background]
 capture_enabled = false
+# Optional absolute path to a static PNG, JPEG, WebP, BMP, TIFF, GIF, or ICO wallpaper.
+# wallpaper_path = "/home/user/Pictures/wallpaper.webp"
 blur_radius = 24
 dim_color = "#00000052"
 

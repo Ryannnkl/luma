@@ -232,6 +232,12 @@ prompt. A radius of 0 must remain sharp, a positive radius must visibly blur the
 frame, and the prompt must remain opaque. Invalid radii and capture failures must
 abort before nested niri becomes locked.
 
+For a static wallpaper, set `background.capture_enabled = false` and provide an
+absolute `background.wallpaper_path`. Confirm that the same image is cropped with
+`cover` on every output, that `blur_radius = 0` remains sharp, and that a positive
+radius replaces the opaque fallback with the blurred image. The two background
+sources are mutually exclusive.
+
 With a positive radius, also confirm that the opaque fallback and usable prompt
 appear without waiting for the blur. The blurred background may replace the
 fallback after the first frame; input and clock rendering must remain responsive

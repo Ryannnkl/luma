@@ -39,7 +39,7 @@ use crate::{
     auth::worker::{AuthenticationCompletion, AuthenticationWorker},
     config::{ClockConfig, Color, Config, DateConfig, InputConfig},
     input::InputState,
-    renderer::LockTextRenderers,
+    renderer::{BackgroundImage, LockTextRenderers},
     state::{AuthenticationOutcome, AuthenticationPhase, AuthenticationState, CompletionAction},
     wayland::opaque::{
         PromptState, draw_captured_background, draw_lock_frame, draw_lock_prompt,
@@ -47,7 +47,9 @@ use crate::{
     },
 };
 
-use super::capture::{BlurCompletion, CapturedOutput, capture_outputs, spawn_blur_worker};
+use super::capture::{
+    BackgroundImages, BlurCompletion, CapturedOutput, capture_outputs, spawn_blur_worker,
+};
 
 /// Runs the authenticated Luma session locker without a timed bypass.
 ///
@@ -63,19 +65,19 @@ pub fn run_authenticated(config: Config, notify_ready: bool) -> Result<(), LockE
         config.date.font_path.as_deref(),
     )
     .map_err(|error| LockError::Font(error.to_string()))?;
-    let captured_outputs = capture_backgrounds(config.background.capture_enabled)?;
+    let PreparedBackground {
+        captured_outputs,
+        wallpaper,
+        pending_blur,
+    } = prepare_background(&config)?;
     let blur_radius = config.background.blur_radius;
-    let (captured_outputs, pending_blur) = if blur_radius == 0 || captured_outputs.is_empty() {
-        (captured_outputs, None)
-    } else {
-        (Vec::new(), Some(captured_outputs))
-    };
     let presentation = LockPresentation {
         renderers,
         clock: config.clock,
         date: config.date,
         dim_color: config.background.dim_color,
         captured_outputs,
+        wallpaper,
     };
     let connection = Connection::connect_to_env().map_err(LockError::Connect)?;
     let (globals, event_queue) =
@@ -168,6 +170,31 @@ fn capture_backgrounds(enabled: bool) -> Result<Vec<CapturedOutput>, LockError> 
     Ok(outputs)
 }
 
+fn prepare_background(config: &Config) -> Result<PreparedBackground, LockError> {
+    let background = if let Some(path) = config.background.wallpaper_path.as_deref() {
+        BackgroundImages::Wallpaper(
+            BackgroundImage::from_path(path)
+                .map_err(|error| LockError::Wallpaper(error.to_string()))?,
+        )
+    } else {
+        BackgroundImages::Outputs(capture_backgrounds(config.background.capture_enabled)?)
+    };
+    let blur_radius = config.background.blur_radius;
+
+    let (captured_outputs, wallpaper, pending_blur) = match background {
+        BackgroundImages::Outputs(outputs) if blur_radius == 0 || outputs.is_empty() => {
+            (outputs, None, None)
+        }
+        BackgroundImages::Wallpaper(image) if blur_radius == 0 => (Vec::new(), Some(image), None),
+        background => (Vec::new(), None, Some(background)),
+    };
+    Ok(PreparedBackground {
+        captured_outputs,
+        wallpaper,
+        pending_blur,
+    })
+}
+
 /// Runs a deliberately bounded opaque lock smoke test.
 ///
 /// This is a development test path, not authentication and not the production
@@ -226,6 +253,7 @@ pub enum LockError {
     Buffer(String),
     Font(String),
     Capture(String),
+    Wallpaper(String),
     AuthenticationWorker(std::io::Error),
     BackgroundWorker(std::io::Error),
     EventLoop(String),
@@ -251,6 +279,9 @@ impl fmt::Display for LockError {
             Self::Font(source) => write!(formatter, "could not load the lock font: {source}"),
             Self::Capture(source) => {
                 write!(formatter, "could not capture lock background: {source}")
+            }
+            Self::Wallpaper(source) => {
+                write!(formatter, "could not load lock wallpaper: {source}")
             }
             Self::AuthenticationWorker(source) => {
                 write!(
@@ -324,6 +355,13 @@ struct LockPresentation {
     date: DateConfig,
     dim_color: Color,
     captured_outputs: Vec<CapturedOutput>,
+    wallpaper: Option<BackgroundImage>,
+}
+
+struct PreparedBackground {
+    captured_outputs: Vec<CapturedOutput>,
+    wallpaper: Option<BackgroundImage>,
+    pending_blur: Option<BackgroundImages>,
 }
 
 struct LockSurfaceState {
@@ -713,14 +751,17 @@ impl LockState {
         if self.finished {
             return;
         }
-        let Some(outputs) = completed_background_outputs(completion) else {
+        let Some(background) = completed_background(completion) else {
             eprintln!("luma: background blur failed; keeping the opaque fallback");
             return;
         };
         let Some(presentation) = &mut self.presentation else {
             return;
         };
-        presentation.captured_outputs = outputs;
+        match background {
+            BackgroundImages::Outputs(outputs) => presentation.captured_outputs = outputs,
+            BackgroundImages::Wallpaper(image) => presentation.wallpaper = Some(image),
+        }
         eprintln!(
             "luma: blurred background ready after {} ms",
             self.activation_started.elapsed().as_millis()
@@ -831,19 +872,17 @@ impl LockState {
         );
         if let Some(presentation) = &self.presentation {
             let output_name = self.output_state.info(&output).and_then(|info| info.name);
-            if let Some(captured) = output_name.as_deref().and_then(|name| {
+            let captured = output_name.as_deref().and_then(|name| {
                 presentation
                     .captured_outputs
                     .iter()
                     .find(|captured| captured.name == name)
-            }) {
-                draw_captured_background(
-                    canvas,
-                    width,
-                    height,
-                    &captured.image,
-                    presentation.dim_color,
-                );
+            });
+            if let Some(image) = captured
+                .map(|captured| &captured.image)
+                .or(presentation.wallpaper.as_ref())
+            {
+                draw_captured_background(canvas, width, height, image, presentation.dim_color);
             }
             draw_lock_visuals(
                 canvas,
@@ -910,7 +949,7 @@ fn handle_backspace(input: &mut InputState, control: bool) {
     }
 }
 
-fn completed_background_outputs(completion: BlurCompletion) -> Option<Vec<CapturedOutput>> {
+fn completed_background(completion: BlurCompletion) -> Option<BackgroundImages> {
     match completion {
         BlurCompletion::Ready(outputs) => Some(outputs),
         BlurCompletion::Failed => None,
@@ -993,8 +1032,7 @@ mod tests {
     use crate::{input::InputState, state::AuthenticationPhase, wayland::opaque::PromptState};
 
     use super::{
-        completed_background_outputs, coverage_is_complete, handle_backspace,
-        prompt_state_for_phase,
+        completed_background, coverage_is_complete, handle_backspace, prompt_state_for_phase,
     };
     use crate::wayland::capture::BlurCompletion;
 
@@ -1044,7 +1082,7 @@ mod tests {
 
     #[test]
     fn failed_background_blur_keeps_the_opaque_fallback() {
-        assert!(completed_background_outputs(BlurCompletion::Failed).is_none());
+        assert!(completed_background(BlurCompletion::Failed).is_none());
     }
 
     #[test]

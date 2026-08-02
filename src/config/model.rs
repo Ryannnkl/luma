@@ -27,6 +27,16 @@ impl Config {
                 "must not exceed 64",
             ));
         }
+        validate_path(
+            self.background.wallpaper_path.as_ref(),
+            "background.wallpaper_path",
+        )?;
+        if self.background.capture_enabled && self.background.wallpaper_path.is_some() {
+            return Err(ValidationError::new(
+                "background.wallpaper_path",
+                "cannot be combined with background.capture_enabled",
+            ));
+        }
         validate_position(self.clock.x, self.clock.y, "clock")?;
         validate_range(self.clock.size_ratio, 0.01..=1.0, "clock.size_ratio")?;
         validate_range(self.clock.min_size, 8.0..=512.0, "clock.min_size")?;
@@ -50,8 +60,8 @@ impl Config {
         )?;
         validate_text(&self.clock.hour_format, "clock.hour_format", 128)?;
         validate_text(&self.clock.minute_format, "clock.minute_format", 128)?;
-        validate_font_path(self.clock.hour_font_path.as_ref(), "clock.hour_font_path")?;
-        validate_font_path(
+        validate_path(self.clock.hour_font_path.as_ref(), "clock.hour_font_path")?;
+        validate_path(
             self.clock.minute_font_path.as_ref(),
             "clock.minute_font_path",
         )?;
@@ -59,7 +69,7 @@ impl Config {
         validate_position(self.date.x, self.date.y, "date")?;
         validate_range(self.date.size, 8.0..=256.0, "date.size")?;
         validate_text(&self.date.format, "date.format", 128)?;
-        validate_font_path(self.date.font_path.as_ref(), "date.font_path")?;
+        validate_path(self.date.font_path.as_ref(), "date.font_path")?;
 
         validate_position(self.input.x, self.input.y, "input")?;
         validate_range(self.input.width, 24.0..=2_048.0, "input.width")?;
@@ -169,7 +179,7 @@ fn validate_text(value: &str, field: &'static str, max: usize) -> Result<(), Val
     }
 }
 
-fn validate_font_path(path: Option<&PathBuf>, field: &'static str) -> Result<(), ValidationError> {
+fn validate_path(path: Option<&PathBuf>, field: &'static str) -> Result<(), ValidationError> {
     let Some(path) = path else {
         return Ok(());
     };
@@ -188,6 +198,7 @@ pub struct BackgroundConfig {
     pub capture_enabled: bool,
     pub blur_radius: u32,
     pub dim_color: Color,
+    pub wallpaper_path: Option<PathBuf>,
 }
 
 impl Default for BackgroundConfig {
@@ -196,6 +207,7 @@ impl Default for BackgroundConfig {
             capture_enabled: false,
             blur_radius: 24,
             dim_color: Color::rgba(0, 0, 0, 82),
+            wallpaper_path: None,
         }
     }
 }
@@ -482,5 +494,30 @@ mod tests {
             .expect_err("font resources need stable absolute paths");
 
         assert_eq!(error.field, "clock.hour_font_path");
+    }
+
+    #[test]
+    fn rejects_relative_wallpaper_paths() {
+        let mut config = Config::default();
+        config.background.wallpaper_path = Some(PathBuf::from("wallpaper.png"));
+
+        let error = config
+            .validate()
+            .expect_err("wallpaper resources need stable absolute paths");
+
+        assert_eq!(error.field, "background.wallpaper_path");
+    }
+
+    #[test]
+    fn rejects_capture_and_wallpaper_together() {
+        let mut config = Config::default();
+        config.background.capture_enabled = true;
+        config.background.wallpaper_path = Some(PathBuf::from("/wallpaper.png"));
+
+        let error = config
+            .validate()
+            .expect_err("background sources must be unambiguous");
+
+        assert_eq!(error.field, "background.wallpaper_path");
     }
 }

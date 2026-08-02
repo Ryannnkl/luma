@@ -195,6 +195,8 @@ A compact configuration looks like this:
 ```toml
 [background]
 capture_enabled = true
+# Set capture_enabled = false and use wallpaper_path for a static image instead.
+# wallpaper_path = "/home/user/Pictures/wallpaper.webp"
 blur_radius = 24
 dim_color = "#00000052"
 
@@ -227,7 +229,11 @@ Important details:
 
 - `capture_enabled` is disabled by default. When enabled, capture failure aborts
   before locking rather than silently showing unexpected content.
-- `blur_radius` accepts values from `0` through `64`; `0` keeps the capture sharp.
+- `wallpaper_path` is an optional absolute path to a static PNG, JPEG, WebP, BMP,
+  TIFF, GIF, or ICO image. It is mutually exclusive with
+  `capture_enabled`; the static image is scaled with `cover` to each output.
+- `blur_radius` accepts values from `0` through `64`; `0` keeps the selected
+  background sharp.
 - Positive blur runs outside the Wayland event loop. Luma can display its opaque
   fallback and usable prompt immediately, then replace the background when the
   blurred capture is ready.

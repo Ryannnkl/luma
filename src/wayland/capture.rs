@@ -234,30 +234,38 @@ pub(crate) fn blur_outputs(outputs: &mut [CapturedOutput], radius: u32) {
     }
 }
 
+pub(crate) enum BackgroundImages {
+    Outputs(Vec<CapturedOutput>),
+    Wallpaper(BackgroundImage),
+}
+
 pub(crate) enum BlurCompletion {
-    Ready(Vec<CapturedOutput>),
+    Ready(BackgroundImages),
     Failed,
 }
 
 pub(crate) fn spawn_blur_worker(
-    outputs: Vec<CapturedOutput>,
+    background: BackgroundImages,
     radius: u32,
     completions: channel::Sender<BlurCompletion>,
 ) -> Result<(), io::Error> {
     thread::Builder::new()
         .name("luma-background".to_owned())
-        .spawn(move || run_blur_worker(outputs, radius, &completions))?;
+        .spawn(move || run_blur_worker(background, radius, &completions))?;
     Ok(())
 }
 
 fn run_blur_worker(
-    mut outputs: Vec<CapturedOutput>,
+    mut background: BackgroundImages,
     radius: u32,
     completions: &channel::Sender<BlurCompletion>,
 ) {
-    let result = catch_unwind(AssertUnwindSafe(|| blur_outputs(&mut outputs, radius)));
+    let result = catch_unwind(AssertUnwindSafe(|| match &mut background {
+        BackgroundImages::Outputs(outputs) => blur_outputs(outputs, radius),
+        BackgroundImages::Wallpaper(image) => image.blur(radius),
+    }));
     let completion = match result {
-        Ok(()) => BlurCompletion::Ready(outputs),
+        Ok(()) => BlurCompletion::Ready(background),
         Err(_) => BlurCompletion::Failed,
     };
     let _ = completions.send(completion);
@@ -408,7 +416,7 @@ mod tests {
 
     use calloop::{EventLoop, channel};
 
-    use super::{BlurCompletion, CapturedOutput, spawn_blur_worker};
+    use super::{BackgroundImages, BlurCompletion, CapturedOutput, spawn_blur_worker};
     use crate::renderer::BackgroundImage;
 
     #[test]
@@ -420,10 +428,10 @@ mod tests {
         let image = BackgroundImage::from_argb8888(3, 3, 12, &source, false)
             .expect("test background should be valid");
         let original = image.clone();
-        let outputs = vec![CapturedOutput {
+        let outputs = BackgroundImages::Outputs(vec![CapturedOutput {
             name: "test-output".to_owned(),
             image,
-        }];
+        }]);
         let (sender, receiver) = channel::channel();
         let mut event_loop: EventLoop<Vec<BlurCompletion>> =
             EventLoop::try_new().expect("event loop should start");
@@ -448,8 +456,48 @@ mod tests {
         else {
             panic!("background worker unexpectedly failed");
         };
+        let BackgroundImages::Outputs(outputs) = outputs else {
+            panic!("worker returned the wrong background type");
+        };
         assert_eq!(outputs.len(), 1);
         assert_eq!(outputs[0].name, "test-output");
         assert_ne!(outputs[0].image, original);
+    }
+
+    #[test]
+    fn blur_worker_handles_a_static_wallpaper() {
+        let source = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let image = BackgroundImage::from_argb8888(3, 3, 12, &source, false)
+            .expect("test wallpaper should be valid");
+        let original = image.clone();
+        let (sender, receiver) = channel::channel();
+        let mut event_loop: EventLoop<Vec<BlurCompletion>> =
+            EventLoop::try_new().expect("event loop should start");
+        event_loop
+            .handle()
+            .insert_source(receiver, |event, (), completions| {
+                if let channel::Event::Msg(completion) = event {
+                    completions.push(completion);
+                }
+            })
+            .expect("background channel should register");
+
+        spawn_blur_worker(BackgroundImages::Wallpaper(image), 3, sender)
+            .expect("background worker should start");
+        let mut completions = Vec::new();
+        event_loop
+            .dispatch(Duration::from_secs(1), &mut completions)
+            .expect("background completion should wake the event loop");
+
+        let BlurCompletion::Ready(BackgroundImages::Wallpaper(image)) = completions
+            .pop()
+            .expect("worker should return one completion")
+        else {
+            panic!("background worker unexpectedly returned another result");
+        };
+        assert_ne!(image, original);
     }
 }
