@@ -1,6 +1,6 @@
 pkgbase = lumalock
 	pkgdesc = Secure and customizable Wayland session locker
-	pkgver = 0.4.0
+	pkgver = 0.5.0
 	pkgrel = 1
 	url = https://github.com/Ryannnkl/luma
 	arch = x86_64
@@ -10,7 +10,7 @@ pkgbase = lumalock
 	depends = libxkbcommon
 	depends = pam
 	backup = etc/pam.d/luma
-	source = luma-0.4.0.tar.gz::https://github.com/Ryannnkl/luma/archive/refs/tags/v0.4.0.tar.gz
-	sha256sums = cea4cc55ecef980e675b18a7b35a610d88922c3bae5a4eb4fa585608452729f1
+	source = luma-0.5.0.tar.gz::https://github.com/Ryannnkl/luma/archive/refs/tags/v0.5.0.tar.gz
+	sha256sums = 28afe39be3017463b0cdf4a4add6db11c9091da6d892232a9f55213877ac6491
 
 pkgname = lumalock
