@@ -2,14 +2,15 @@
 
 set -eu
 
-if [ "$#" -ne 3 ]; then
-    echo "Usage: ${0} LOCKER WALLPAPER DELAY_SECONDS" >&2
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+    echo "Usage: ${0} LOCKER WALLPAPER DELAY_SECONDS [LUMA_CONFIG]" >&2
     exit 2
 fi
 
 locker="$1"
 wallpaper="$2"
 delay_seconds="$3"
+config_path="${4:-}"
 wallpaper_pid=""
 
 stop_wallpaper() {
@@ -48,7 +49,11 @@ fi
 # of the background capture. The measured interval starts after this delay.
 sleep 0.1
 started_at="$(date +%s%N)"
-coproc LOCKER_PROCESS { "${locker}" --lock --notify-ready; }
+config_arguments=()
+if [ -n "${config_path}" ]; then
+    config_arguments=(--config "${config_path}")
+fi
+coproc LOCKER_PROCESS { "${locker}" --lock --notify-ready "${config_arguments[@]}"; }
 locker_pid="${LOCKER_PROCESS_PID}"
 if IFS= read -r ready_message <&"${LOCKER_PROCESS[0]}" &&
     [ "${ready_message}" = "LUMA_LOCK_READY" ]

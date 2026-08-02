@@ -167,6 +167,8 @@ session-lock request, opaque coverage, and blur-ready timings in the service
 journal. The short wallpaper and dialog preparation delays belong to the test
 harness and are excluded from those measurements. This mode requires `swaybg`,
 `zenity`, and a configuration with `background.capture_enabled = true`.
+To force a specific Luma TOML file through the systemd-launched test process,
+also set `LUMA_NESTED_CONFIG` to its absolute path.
 
 Read the measured activation time with:
 

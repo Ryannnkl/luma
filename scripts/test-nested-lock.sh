@@ -12,6 +12,7 @@ project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 release_binary="${project_dir}/target/release/luma"
 nested_config="${project_dir}/scripts/niri-nested-test.kdl"
 nested_client=("${release_binary}" --lock)
+nested_luma_config="${LUMA_NESTED_CONFIG:-}"
 
 stop_test() {
     systemctl --user stop "${LOCK_UNIT}" >/dev/null 2>&1 || true
@@ -78,6 +79,25 @@ if [ -n "${LUMA_NESTED_WALLPAPER:-}" ]; then
         "${LUMA_NESTED_WALLPAPER}"
         "${wallpaper_delay}"
     )
+fi
+
+if [ -n "${nested_luma_config}" ]; then
+    case "${nested_luma_config}" in
+        /*) ;;
+        *)
+            echo "LUMA_NESTED_CONFIG must be an absolute path." >&2
+            exit 1
+            ;;
+    esac
+    if [ ! -f "${nested_luma_config}" ] || [ ! -r "${nested_luma_config}" ]; then
+        echo "LUMA_NESTED_CONFIG must name a readable regular file." >&2
+        exit 1
+    fi
+    if [ -n "${LUMA_NESTED_WALLPAPER:-}" ]; then
+        nested_client+=("${nested_luma_config}")
+    else
+        nested_client+=(--config "${nested_luma_config}")
+    fi
 fi
 
 if [ ! -f /etc/pam.d/luma ] || [ ! -r /etc/pam.d/luma ]; then
