@@ -204,6 +204,7 @@ impl Default for BackgroundConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct ClockConfig {
     pub enabled: bool,
+    pub layout: ClockLayout,
     pub x: f32,
     pub y: f32,
     pub size_ratio: f32,
@@ -224,6 +225,7 @@ impl Default for ClockConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            layout: ClockLayout::Stacked,
             x: 0.5,
             y: 0.46,
             size_ratio: 0.22,
@@ -240,6 +242,14 @@ impl Default for ClockConfig {
             minute_color: Color::rgb(246, 248, 247),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClockLayout {
+    #[default]
+    Stacked,
+    SingleLine,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -340,6 +350,20 @@ mod tests {
         assert!(!config.clock.enabled);
         assert_eq!(config.clock.hour_color.channels(), [255, 0, 0, 255]);
         assert!(config.input.enabled);
+        assert_eq!(config.clock.layout, super::ClockLayout::Stacked);
+    }
+
+    #[test]
+    fn accepts_single_line_clock_layout() {
+        let config: Config = toml::from_str(
+            r#"
+                [clock]
+                layout = "single_line"
+            "#,
+        )
+        .expect("single-line clock layout should parse");
+
+        assert_eq!(config.clock.layout, super::ClockLayout::SingleLine);
     }
 
     #[test]

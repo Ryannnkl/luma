@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local};
 
 use crate::{
-    config::{ClockConfig, Color, DateConfig, InputConfig},
+    config::{ClockConfig, ClockLayout, Color, DateConfig, InputConfig},
     renderer::{BackgroundImage, ClipRectangle, LockTextRenderers},
 };
 
@@ -151,37 +151,44 @@ pub(crate) fn draw_lock_visuals(
     if clock.enabled {
         #[allow(clippy::cast_precision_loss)]
         let clock_size = (height as f32 * clock.size_ratio).clamp(clock.min_size, clock.max_size);
-        let line_gap = clock_size * clock.line_gap_ratio;
         #[allow(clippy::cast_precision_loss)]
         let center = (clock.x * width as f32, clock.y * height as f32);
         let hour = now.format(&clock.hour_format).to_string();
         let minute = now.format(&clock.minute_format).to_string();
-        renderers.hour().draw_centered(
-            canvas,
-            width,
-            height,
-            clip,
-            (
-                center.0 + clock_size * clock.hour_offset_x_ratio,
-                center.1 - line_gap * 0.55,
+        match clock.layout {
+            ClockLayout::Stacked => {
+                let line_gap = clock_size * clock.line_gap_ratio;
+                renderers.hour().draw_centered(
+                    canvas,
+                    width,
+                    height,
+                    clip,
+                    (
+                        center.0 + clock_size * clock.hour_offset_x_ratio,
+                        center.1 - line_gap * 0.55,
+                    ),
+                    clock_size,
+                    &hour,
+                    clock.hour_color,
+                );
+                renderers.minute().draw_centered(
+                    canvas,
+                    width,
+                    height,
+                    clip,
+                    (
+                        center.0 + clock_size * clock.minute_offset_x_ratio,
+                        center.1 + line_gap * 0.55,
+                    ),
+                    clock_size,
+                    &minute,
+                    clock.minute_color,
+                );
+            }
+            ClockLayout::SingleLine => draw_single_line_clock(
+                canvas, width, height, clip, center, clock_size, &hour, &minute, clock, renderers,
             ),
-            clock_size,
-            &hour,
-            clock.hour_color,
-        );
-        renderers.minute().draw_centered(
-            canvas,
-            width,
-            height,
-            clip,
-            (
-                center.0 + clock_size * clock.minute_offset_x_ratio,
-                center.1 + line_gap * 0.55,
-            ),
-            clock_size,
-            &minute,
-            clock.minute_color,
-        );
+        }
     }
 
     if date.enabled {
@@ -192,6 +199,61 @@ pub(crate) fn draw_lock_visuals(
             canvas, width, height, clip, center, date.size, &formatted, date.color,
         );
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_single_line_clock(
+    canvas: &mut [u8],
+    width: usize,
+    height: usize,
+    clip: ClipRectangle,
+    center: (f32, f32),
+    size: f32,
+    hour: &str,
+    minute: &str,
+    clock: &ClockConfig,
+    renderers: &LockTextRenderers,
+) {
+    let separator = ":";
+    let hour_width = renderers.hour().text_width(size, hour);
+    let separator_width = renderers.hour().text_width(size, separator);
+    let minute_width = renderers.minute().text_width(size, minute);
+    let total_width = hour_width + separator_width + minute_width;
+    let left = center.0 - total_width / 2.0;
+
+    renderers.hour().draw_centered(
+        canvas,
+        width,
+        height,
+        clip,
+        (left + hour_width / 2.0, center.1),
+        size,
+        hour,
+        clock.hour_color,
+    );
+    renderers.hour().draw_centered(
+        canvas,
+        width,
+        height,
+        clip,
+        (left + hour_width + separator_width / 2.0, center.1),
+        size,
+        separator,
+        clock.minute_color,
+    );
+    renderers.minute().draw_centered(
+        canvas,
+        width,
+        height,
+        clip,
+        (
+            left + hour_width + separator_width + minute_width / 2.0,
+            center.1,
+        ),
+        size,
+        minute,
+        clock.minute_color,
+    );
 }
 
 pub(crate) fn draw_captured_background(
@@ -831,7 +893,7 @@ mod tests {
     use chrono::{Local, TimeZone};
 
     use crate::{
-        config::{Color, InputConfig},
+        config::{ClockLayout, Color, InputConfig},
         renderer::BackgroundImage,
     };
 
@@ -1128,6 +1190,44 @@ mod tests {
             .expect("test date must be valid");
 
         draw_lock_visuals(&mut canvas, 400, 300, &clock, &date, &renderers, now);
+
+        assert!(
+            canvas
+                .chunks_exact(4)
+                .any(|pixel| pixel != encoded(BACKGROUND))
+        );
+        assert!(canvas.chunks_exact(4).all(|pixel| pixel[3] == 255));
+    }
+
+    #[test]
+    fn draws_single_line_clock() {
+        let width = 400;
+        let height = 300;
+        let mut canvas = encoded(BACKGROUND).repeat(width * height);
+        let renderers = crate::renderer::LockTextRenderers::from_paths(None, None, None)
+            .expect("embedded fonts must load");
+        let clock = crate::config::ClockConfig {
+            layout: ClockLayout::SingleLine,
+            ..crate::config::ClockConfig::default()
+        };
+        let date = crate::config::DateConfig {
+            enabled: false,
+            ..crate::config::DateConfig::default()
+        };
+        let now = Local
+            .with_ymd_and_hms(2026, 7, 16, 19, 41, 0)
+            .single()
+            .expect("test date must be valid");
+
+        draw_lock_visuals(
+            &mut canvas,
+            i32::try_from(width).expect("test width fits in i32"),
+            i32::try_from(height).expect("test height fits in i32"),
+            &clock,
+            &date,
+            &renderers,
+            now,
+        );
 
         assert!(
             canvas

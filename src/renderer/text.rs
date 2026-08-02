@@ -121,6 +121,24 @@ impl TextRenderer {
         Ok(Self { font })
     }
 
+    #[must_use]
+    pub fn text_width(&self, size: f32, text: &str) -> f32 {
+        let scaled = self.font.as_scaled(PxScale::from(size));
+        let mut width = 0.0;
+        let mut previous = None;
+
+        for character in text.chars() {
+            let glyph_id = scaled.glyph_id(character);
+            if let Some(previous) = previous {
+                width += scaled.kern(previous, glyph_id);
+            }
+            width += scaled.h_advance(glyph_id);
+            previous = Some(glyph_id);
+        }
+
+        width
+    }
+
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,

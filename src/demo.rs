@@ -6,7 +6,7 @@ use eframe::egui::{
     TextureOptions, Vec2,
 };
 
-use crate::config::{Color, Config, DateConfig, InputConfig};
+use crate::config::{ClockLayout, Color, Config, DateConfig, InputConfig};
 
 pub fn run(config: Config) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -168,32 +168,45 @@ fn paint_clock(ui: &egui::Ui, config: &Config) {
     let minutes = now.format(&config.clock.minute_format).to_string();
     let clock_size = (rect.height() * config.clock.size_ratio)
         .clamp(config.clock.min_size, config.clock.max_size);
-    let line_gap = clock_size * config.clock.line_gap_ratio;
     let center = position(rect, config.clock.x, config.clock.y);
     let font = FontId::new(clock_size, FontFamily::Proportional);
 
-    ui.painter().text(
-        center
-            + Vec2::new(
-                clock_size * config.clock.hour_offset_x_ratio,
-                -line_gap * 0.55,
-            ),
-        Align2::CENTER_CENTER,
-        hours,
-        font.clone(),
-        to_egui_color(config.clock.hour_color),
-    );
-    ui.painter().text(
-        center
-            + Vec2::new(
-                clock_size * config.clock.minute_offset_x_ratio,
-                line_gap * 0.55,
-            ),
-        Align2::CENTER_CENTER,
-        minutes,
-        font,
-        to_egui_color(config.clock.minute_color),
-    );
+    match config.clock.layout {
+        ClockLayout::Stacked => {
+            let line_gap = clock_size * config.clock.line_gap_ratio;
+            ui.painter().text(
+                center
+                    + Vec2::new(
+                        clock_size * config.clock.hour_offset_x_ratio,
+                        -line_gap * 0.55,
+                    ),
+                Align2::CENTER_CENTER,
+                hours,
+                font.clone(),
+                to_egui_color(config.clock.hour_color),
+            );
+            ui.painter().text(
+                center
+                    + Vec2::new(
+                        clock_size * config.clock.minute_offset_x_ratio,
+                        line_gap * 0.55,
+                    ),
+                Align2::CENTER_CENTER,
+                minutes,
+                font,
+                to_egui_color(config.clock.minute_color),
+            );
+        }
+        ClockLayout::SingleLine => {
+            ui.painter().text(
+                center,
+                Align2::CENTER_CENTER,
+                format!("{hours}:{minutes}"),
+                font,
+                to_egui_color(config.clock.minute_color),
+            );
+        }
+    }
 }
 
 fn paint_date(ui: &egui::Ui, config: &DateConfig) {

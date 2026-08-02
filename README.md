@@ -200,6 +200,7 @@ dim_color = "#00000052"
 
 [clock]
 enabled = true
+layout = "single_line"
 hour_format = "%H"
 minute_format = "%M"
 hour_color = "#93e6be"
@@ -209,7 +210,7 @@ minute_color = "#f6f8f7"
 
 [date]
 enabled = true
-format = "%d/%m/%Y"
+format = "%A, %B %d"
 # font_path = "/usr/share/fonts/example/Example-Regular.ttf"
 color = "#f6f8f7dc"
 
@@ -230,6 +231,8 @@ Important details:
   fallback and usable prompt immediately, then replace the background when the
   blurred capture is ready.
 - `hour_color`, `minute_color`, and `date.color` are independent.
+- `clock.layout` accepts `stacked` (the default) or `single_line`; the latter
+  renders the time as `HH:MM` centered on one line.
 - Font paths are optional, absolute TTF/OTF paths. Each configured font must be a
   regular valid file no larger than 16 MiB.
 - Time and date formats use Chrono/strftime directives such as `%H`, `%M`, `%p`,
